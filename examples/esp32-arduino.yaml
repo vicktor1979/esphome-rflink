@@ -1,0 +1,113 @@
+# EXPERIMENTAL RX BRIDGE. This is a classic ESP32 example, not a wiring detection.
+# GPIO27 is an example non-strapping input. Change it to your receiver DATA pin.
+substitutions:
+  rx_pin: GPIO27
+  rflink_topic: RFLink/msg
+
+esphome:
+  name: rflink-esphome32
+  friendly_name: RFLink ESPHome32
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+
+external_components:
+  - source: github://YOUR_GITHUB_USER/esphome-rflink@main
+    components: [rflink]
+    refresh: 5min
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+logger:
+  level: DEBUG
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# MQTT-only example. The legacy RFLink firmware's network code is NOT compiled.
+mqtt:
+  broker: !secret mqtt_broker
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  discovery: false
+  birth_message:
+    topic: RFLink/lwt
+    payload: Online
+    retain: true
+  will_message:
+    topic: RFLink/lwt
+    payload: Offline
+    retain: true
+  shutdown_message:
+    topic: RFLink/lwt
+    payload: Offline
+    retain: true
+
+time:
+  - platform: sntp
+    id: rflink_time
+    timezone: Europe/Budapest
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      id: rflink_ip
+      internal: true
+    mac_address:
+      id: rflink_mac
+      internal: true
+
+sensor:
+  - platform: wifi_signal
+    id: rflink_rssi
+    internal: true
+    update_interval: 60s
+
+remote_receiver:
+  id: rf_receiver
+  pin:
+    number: ${rx_pin}
+    inverted: false
+    mode: INPUT
+  filter: 100us
+  idle: 5ms
+  buffer_size: 4kb
+  # For radio troubleshooting only, uncomment temporarily:
+  # dump: raw
+
+rflink:
+  id: rf_bridge
+  receiver_id: rf_receiver
+  # Reads enabled RX definitions from the ORIGINAL _Plugin_Config_01.h.
+  rx_plugins: configured
+  # For the first EV1527 / Cresta / Mebus test, use instead:
+  # rx_plugins: [34, 40, 61]
+  # The required translation plugin 001 is always added automatically.
+  log_messages: true
+  on_message:
+    - mqtt.publish:
+        topic: ${rflink_topic}
+        qos: 0
+        retain: false
+        payload: !lambda |-
+          // x is one complete JSON object from the original RFLink decoder.
+          if (x.empty() || x.back() != '}') return x;
+          x.pop_back();
+          auto now = id(rflink_time).now();
+          if (now.is_valid()) {
+            x += ",\"TIME\":\"" + now.strftime("%Y-%m-%dT%H:%M:%S") + "\"";
+          }
+          x += ",\"IP\":\"" + id(rflink_ip).state + "\"";
+          x += ",\"MAC\":\"" + id(rflink_mac).state + "\"";
+          // SIGNAL is Wi-Fi RSSI in dBm, not radio receiver field strength.
+          float rssi = id(rflink_rssi).state;
+          if (!std::isnan(rssi)) {
+            x += ",\"SIGNAL\":" + std::to_string(static_cast<int>(rssi));
+          }
+          return x + "}";

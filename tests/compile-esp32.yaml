@@ -1,0 +1,25 @@
+# Build-only fixture, not a deployable network configuration.
+esphome:
+  name: rflink-test-esp32
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [rflink]
+logger:
+remote_receiver:
+  id: rf_receiver
+  pin: GPIO27
+  filter: 100us
+  idle: 5ms
+  buffer_size: 4kb
+rflink:
+  receiver_id: rf_receiver
+  rx_plugins: configured
+  on_message:
+    - lambda: |-
+        ESP_LOGI("rflink_test", "%s", x.c_str());
