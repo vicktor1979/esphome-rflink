@@ -1,38 +1,20 @@
-PASS: all 54 source hashes; source discovery and selections.
-Selection [61]: 2 RX plugins.
-{"PARAM":"20;00","NAME":"EV1527","ID":"01fac2","SWITCH":"08","CMD":"ON"}
-PASS: EV1527 synthetic waveform and boundary checks; 2 RX plugins compiled.
-Selection [34, 40, 61]: 4 RX plugins.
-{"PARAM":"20;00","NAME":"EV1527","ID":"01fac2","SWITCH":"08","CMD":"ON"}
-PASS: EV1527 synthetic waveform and boundary checks; 4 RX plugins compiled.
-Selection configured: 47 RX plugins.
-In file included from /mnt/data/esphome-rflink/components/rflink/rflink_engine.cpp:3:
-/tmp/rflink-test-t6wlzv0a/src/rflink_vendor/Plugins/Plugin_083.c.inc: In function ‘boolean rflink_legacy::Plugin_083(byte, char*)’:
-/tmp/rflink-test-t6wlzv0a/src/rflink_vendor/Plugins/Plugin_083.c.inc:114:34: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
-  114 |             commandstring = PSTR("CMD=UP");
-/mnt/data/esphome-rflink/tests/stubs/Arduino.h:22:18: note: in definition of macro ‘PSTR’
-   22 | #define PSTR(x) (x)
-      |                  ^
-/tmp/rflink-test-t6wlzv0a/src/rflink_vendor/Plugins/Plugin_083.c.inc:117:34: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
-  117 |             commandstring = PSTR("CMD=DOWN");
-/mnt/data/esphome-rflink/tests/stubs/Arduino.h:22:18: note: in definition of macro ‘PSTR’
-   22 | #define PSTR(x) (x)
-      |                  ^
-/tmp/rflink-test-t6wlzv0a/src/rflink_vendor/Plugins/Plugin_083.c.inc:120:34: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
-  120 |             commandstring = PSTR("CMD=STOP");
-/mnt/data/esphome-rflink/tests/stubs/Arduino.h:22:18: note: in definition of macro ‘PSTR’
-   22 | #define PSTR(x) (x)
-      |                  ^
-/tmp/rflink-test-t6wlzv0a/src/rflink_vendor/Plugins/Plugin_083.c.inc:123:34: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
-  123 |             commandstring = PSTR("CMD=SETUP");
-/mnt/data/esphome-rflink/tests/stubs/Arduino.h:22:18: note: in definition of macro ‘PSTR’
-   22 | #define PSTR(x) (x)
-      |                  ^
-{"PARAM":"20;00","NAME":"EV1527","ID":"01fac2","SWITCH":"08","CMD":"ON"}
-NOTE: full legacy plugin set re-emits this duplicate in the host test; shared CRC state is unchanged.
-PASS: EV1527 synthetic waveform and boundary checks; 47 RX plugins compiled.
-Selection all: 48 RX plugins.
-{"PARAM":"20;00","NAME":"EV1527","ID":"01fac2","SWITCH":"08","CMD":"ON"}
-NOTE: full legacy plugin set re-emits this duplicate in the host test; shared CRC state is unchanged.
-PASS: EV1527 synthetic waveform and boundary checks; 48 RX plugins compiled.
-Host tests passed. ESP8266/ESP32 firmware build and real-radio tests have NOT been run here.
+[rflink] RFLink decode OFF (RF capture remains active)
+[rflink] RFLink decode ON (RF capture remains active)
+[rflink] {"PARAM":"20;00","NAME":"EV1527","ID":"085372","SWITCH":"08","CMD":"ON"}
+[rflink] RFLink decode OFF (RF capture remains active)
+[rflink] RFLink decode ON (RF capture remains active)
+[rflink] {"PARAM":"20;01","NAME":"EV1527","ID":"085372","SWITCH":"08","CMD":"ON"}
+[rflink] RFLink decode OFF (RF capture remains active)
+[rflink] RFLink RX compatibility bridge v0.1.2-diag (runtime decode gate):
+[rflink]   RX plugins compiled: 2
+[rflink]   Decode enabled: NO
+[rflink]   Arduino framework; original plugin sources; TX not implemented
+PASS runtime gate: OFF skips decode+callback; ON decodes EV1527 085372/08; duplicate suppression; OFF/ON resume; diagnostic counters/timer arithmetic.
+
+PASS: YAML parsing and duplicate mapping keys; no overlapping entity/script/global IDs with the supplied HA package.
+PASS: selected plugins [001,061], buffer 1000b, unchanged secret references, no dump, software switch starts OFF, test-window delay 60s.
+PASS: 54 plugin files byte-identical to original uploaded RFLink archive.
+Runtime gate test compiled with g++ C++17 and UBSan. Test uses a minimal HOST-ONLY ESPHome shim, original engine and plugins, synthetic RF pulses and a simulated microsecond clock.
+The timing assertions check arithmetic, NOT ESP8266 CPU performance.
+NOT RUN: real ESPHome validation/code generation, ESP8266 firmware build, network transport or physical radio/hardware testing.
+Existing warnings from original plugins were not changed.
