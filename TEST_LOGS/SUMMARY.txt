@@ -1,0 +1,24 @@
+PASS: 54 original plugin/config/old-file SHA256 digests match the original manifest.
+PASS: all=48; configured=47; the difference is Plugin_083; explicit selection and missing-ID validation.
+PASS: YAML unique keys/IDs; all RX selection; receiver timings, API gate, field and gesture packages retained.
+PASS: Unpatched all-plugin build fails with real const PSTR typing (Plugin_083); regression reproduced.
+PASS: HOST C++20 syntax build: all, 48 RX plugins; byte-identical staged plugins; TX disabled.
+PASS: HOST C++20 syntax build: configured, 47 RX plugins; byte-identical staged plugins; TX disabled.
+PASS: HOST C++20 syntax build: ev1527, 2 RX plugins; byte-identical staged plugins; TX disabled.
+PASS: HOST C++20 syntax build: weather_ev1527, 4 RX plugins; byte-identical staged plugins; TX disabled.
+PASS: All 48 per-plugin selections compile individually (001 automatically present).
+PASS: Scoped PSTR fallback compiles; framework const PSTR type is restored afterwards.
+PASS: PASS: 29 gesture scenarios (single/multi/hold/cancel/identity/rollover/safety).
+PASS: Real bridge + gesture YAML lambda execution, guarded const flash, ASan/UBSan: ev1527. PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
+PASS: Real bridge + gesture YAML lambda execution, guarded const flash, ASan/UBSan: weather_ev1527. PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
+PASS: Real bridge + gesture YAML lambda execution, guarded const flash, ASan/UBSan: configured. PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
+PASS: Real bridge + gesture YAML lambda execution, guarded const flash, ASan/UBSan: all. PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
+PASS: Brel four command paths, flash reads and PSTR restoration: brel
+PASS: Brel four command paths, flash reads and PSTR restoration: all
+PASS: PASS: formatter RAM/PSTR strings, escaping, UTF-8, null/empty, size limit.
+PASS: Original 54 plugin/config/old files remain unchanged after every test.
+LIMIT: Host compiler and Arduino/ESPHome test doubles; NOT a full ESPHome/Xtensa firmware build.
+LIMIT: No real RF, Wi-Fi, API, OTA, flash size, target RAM or long-term stability test was possible.
+KNOWN: Original Plugin_037 printf format warning is not suppressed.
+KNOWN: Full legacy decoder sets can emit repeated EV1527 JSON; gesture frame logic passes independently.
+KNOWN: Original Plugin_083 emits duplicate NAME fields for its command; source semantics unchanged.

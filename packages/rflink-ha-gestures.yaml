@@ -1,0 +1,149 @@
+# Add-on to rflink-ha-all-data.yaml, NOT a replacement.
+# Receives accepted EV1527 frames through a lightweight side channel; the
+# original RFLink JSON duplicate suppression and all sensor fields stay intact.
+substitutions:
+  rflink_gesture_1_id: "085372"
+  rflink_gesture_1_button: "08"
+  rflink_gesture_1_name: "RF 085372 08 gesztus"
+  rflink_gesture_2_id: "01fac2"
+  rflink_gesture_2_button: "08"
+  rflink_gesture_2_name: "Konyhai 08 gesztus"
+  rflink_gesture_release_ms: "180"
+  rflink_gesture_multi_ms: "350"
+  rflink_gesture_hold_ms: "700"
+  rflink_gesture_repeat_ms: "250"
+  rflink_gesture_max_press_ms: "30000"
+  rflink_gesture_log_events: "true"
+
+globals:
+  - id: rf_gesture_1
+    type: esphome::rflink_gestures::Button
+    restore_value: false
+  - id: rf_gesture_2
+    type: esphome::rflink_gestures::Button
+    restore_value: false
+
+event:
+  - platform: template
+    id: rf_gesture_event_1
+    name: "${rflink_gesture_1_name}"
+    device_class: button
+    event_types:
+      - press
+      - release
+      - single
+      - double
+      - triple
+      - click_4
+      - click_5
+      - click_6
+      - click_7
+      - click_8
+      - click_9
+      - click_10
+      - hold
+      - hold_repeat
+      - hold_release
+      - cancel
+      - multi_overflow
+  - platform: template
+    id: rf_gesture_event_2
+    name: "${rflink_gesture_2_name}"
+    device_class: button
+    event_types:
+      - press
+      - release
+      - single
+      - double
+      - triple
+      - click_4
+      - click_5
+      - click_6
+      - click_7
+      - click_8
+      - click_9
+      - click_10
+      - hold
+      - hold_repeat
+      - hold_release
+      - cancel
+      - multi_overflow
+
+binary_sensor:
+  - platform: template
+    id: rf_gesture_pressed_1
+    name: "${rflink_gesture_1_name} nyomva"
+    icon: mdi:gesture-tap-hold
+  - platform: template
+    id: rf_gesture_pressed_2
+    name: "${rflink_gesture_2_name} nyomva"
+    icon: mdi:gesture-tap-hold
+
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - lambda: |-
+          esphome::rflink_gestures::Timing t;
+          t.release_ms = ${rflink_gesture_release_ms};
+          t.multi_click_ms = ${rflink_gesture_multi_ms};
+          t.hold_ms = ${rflink_gesture_hold_ms};
+          t.repeat_ms = ${rflink_gesture_repeat_ms};
+          t.max_press_ms = ${rflink_gesture_max_press_ms};
+          const bool ok_1 = id(rf_gesture_1).configure_ev1527(
+              "${rflink_gesture_1_id}", "${rflink_gesture_1_button}", t);
+          id(rf_gesture_pressed_1).publish_state(false);
+          if (!ok_1) ESP_LOGE("rflink.gesture", "Pattern 1: invalid ID/button/timing; disabled");
+          id(rf_gesture_1).set_callback([=](const esphome::rflink_gestures::Event &e) {
+            if (!id(rf_gesture_pressed_1).has_state() || id(rf_gesture_pressed_1).state != e.pressed)
+              id(rf_gesture_pressed_1).publish_state(e.pressed);
+            id(rf_gesture_event_1).trigger(e.type);
+            if (${rflink_gesture_log_events}) {
+              ESP_LOGD("rflink.gesture", "EV1527 ${rflink_gesture_1_id}/${rflink_gesture_1_button} -> %s; frames=%lu; span_ms=%lu; max_gap_ms=%lu; clicks=%u",
+                  e.type, static_cast<unsigned long>(e.frames), static_cast<unsigned long>(e.span_ms),
+                  static_cast<unsigned long>(e.max_gap_ms), static_cast<unsigned>(e.clicks));
+            }
+          });
+          const bool ok_2 = id(rf_gesture_2).configure_ev1527(
+              "${rflink_gesture_2_id}", "${rflink_gesture_2_button}", t);
+          id(rf_gesture_pressed_2).publish_state(false);
+          if (!ok_2) ESP_LOGE("rflink.gesture", "Pattern 2: invalid ID/button/timing; disabled");
+          id(rf_gesture_2).set_callback([=](const esphome::rflink_gestures::Event &e) {
+            if (!id(rf_gesture_pressed_2).has_state() || id(rf_gesture_pressed_2).state != e.pressed)
+              id(rf_gesture_pressed_2).publish_state(e.pressed);
+            id(rf_gesture_event_2).trigger(e.type);
+            if (${rflink_gesture_log_events}) {
+              ESP_LOGD("rflink.gesture", "EV1527 ${rflink_gesture_2_id}/${rflink_gesture_2_button} -> %s; frames=%lu; span_ms=%lu; max_gap_ms=%lu; clicks=%u",
+                  e.type, static_cast<unsigned long>(e.frames), static_cast<unsigned long>(e.span_ms),
+                  static_cast<unsigned long>(e.max_gap_ms), static_cast<unsigned>(e.clicks));
+            }
+          });
+          id(rf_bridge).add_on_frame_callback([=](uint16_t plugin_id, uint32_t code) {
+            const uint32_t now = millis();
+            id(rf_gesture_1).observe(plugin_id, code, now);
+            id(rf_gesture_2).observe(plugin_id, code, now);
+          });
+          id(rf_bridge).add_on_decode_state_callback([=](bool enabled) {
+            if (!enabled) {
+              id(rf_gesture_1).cancel(millis());
+              id(rf_gesture_2).cancel(millis());
+            }
+          });
+          ESP_LOGI("rflink.gesture", "v0.1.4; patterns=%u; release=%lu; multi=%lu; hold=%lu; repeat=%lu ms",
+              static_cast<unsigned>(ok_1) + static_cast<unsigned>(ok_2),
+              static_cast<unsigned long>(t.release_ms), static_cast<unsigned long>(t.multi_click_ms),
+              static_cast<unsigned long>(t.hold_ms), static_cast<unsigned long>(t.repeat_ms));
+
+interval:
+  # Only two state-machine ticks, no raw waveform dumps and no delay/wait loops.
+  - interval: 20ms
+    then:
+      - lambda: |-
+          const uint32_t now = millis();
+          if (id(rf_bridge).is_decode_enabled()) {
+            id(rf_gesture_1).tick(now);
+            id(rf_gesture_2).tick(now);
+          } else {
+            id(rf_gesture_1).cancel(now);
+            id(rf_gesture_2).cancel(now);
+          }

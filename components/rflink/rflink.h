@@ -1,4 +1,5 @@
 #pragma once
+#include "rflink_gestures.h"
 #include "rflink_fields.h"  // v0.1.3: data conversion and API-ready gate helpers
 #include <cstdint>
 #include <functional>
@@ -25,6 +26,14 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   uint32_t get_message_count() const { return this->message_count_; }
   uint32_t get_max_decode_us() const { return this->max_decode_us_; }
   uint32_t get_max_callback_us() const { return this->max_callback_us_; }
+  uint32_t get_observed_frames() const { return this->observed_frames_; }
+  uint32_t get_max_frame_callback_us() const { return this->max_frame_callback_us_; }
+  void add_on_frame_callback(std::function<void(uint16_t, uint32_t)> &&callback) {
+    this->frame_callbacks_.add(std::move(callback));
+  }
+  void add_on_decode_state_callback(std::function<void(bool)> &&callback) {
+    this->decode_state_callbacks_.add(std::move(callback));
+  }
   void add_on_message_callback(std::function<void(std::string)> &&callback) {
     this->callbacks_.add(std::move(callback));
   }
@@ -36,6 +45,10 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   uint32_t message_count_{0};
   uint32_t max_decode_us_{0};
   uint32_t max_callback_us_{0};
+  uint32_t observed_frames_{0};
+  uint32_t max_frame_callback_us_{0};
+  CallbackManager<void(uint16_t, uint32_t)> frame_callbacks_;
+  CallbackManager<void(bool)> decode_state_callbacks_;
   CallbackManager<void(std::string)> callbacks_;
 };
 class RFLinkMessageTrigger : public Trigger<std::string> {

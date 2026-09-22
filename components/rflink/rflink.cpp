@@ -9,7 +9,7 @@ namespace rflink {
 static const char *const TAG = "rflink";
 void RFLinkComponent::setup() { ::rflink_legacy::reset(); }
 void RFLinkComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.2-diag (runtime decode gate):");
+  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.5 (all RX plugins + API gate + EV1527 gestures):");
   ESP_LOGCONFIG(TAG, "  RX plugins compiled: %u", static_cast<unsigned>(::rflink_legacy::plugin_count()));
   ESP_LOGCONFIG(TAG, "  Decode enabled: %s", this->decode_enabled_ ? "YES" : "NO");
   ESP_LOGCONFIG(TAG, "  Arduino framework; original plugin sources; TX not implemented");
@@ -18,7 +18,8 @@ void RFLinkComponent::set_decode_enabled(bool enabled) {
   if (this->decode_enabled_ == enabled) return;
   this->decode_enabled_ = enabled;
   ESP_LOGI(TAG, "RFLink decode %s (RF capture remains active)", enabled ? "ON" : "OFF");
-  // Do not reset legacy deduplication state, entities or packet counters.
+  // Cancel gesture sequences when decoding is paused. Legacy dedup state stays.
+  this->decode_state_callbacks_.call(enabled);
 }
 bool RFLinkComponent::on_receive(remote_base::RemoteReceiveData data) {
   if (!this->decode_enabled_) {
@@ -28,9 +29,17 @@ bool RFLinkComponent::on_receive(remote_base::RemoteReceiveData data) {
   ++this->decode_calls_;
   std::string json;
   const uint32_t decode_start = micros();
-  const bool recognized = ::rflink_legacy::decode(data.get_raw_data(), json);
+  ::rflink_legacy::FrameObservation observation;
+  const bool recognized = ::rflink_legacy::decode(data.get_raw_data(), json, &observation);
   const uint32_t decode_us = static_cast<uint32_t>(micros() - decode_start);
   if (decode_us > this->max_decode_us_) this->max_decode_us_ = decode_us;
+  if (observation.valid) {
+    ++this->observed_frames_;
+    const uint32_t frame_start = micros();
+    this->frame_callbacks_.call(observation.plugin_id, observation.code);
+    const uint32_t frame_us = static_cast<uint32_t>(micros() - frame_start);
+    if (frame_us > this->max_frame_callback_us_) this->max_frame_callback_us_ = frame_us;
+  }
   if (!json.empty()) {
     ++this->message_count_;
     if (this->log_messages_) ESP_LOGD(TAG, "%s", json.c_str());

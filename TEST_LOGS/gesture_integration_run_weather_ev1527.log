@@ -1,0 +1,39 @@
+$ /tmp/rflink-all-3xcym84a/integration
+[rflink] RFLink decode OFF (RF capture remains active)
+[rflink.gesture] v0.1.4; patterns=2; release=180; multi=350; hold=700; repeat=250 ms
+[rflink] RFLink decode ON (RF capture remains active)
+[rflink.gesture] EV1527 085372/08 -> press; frames=1; span_ms=0; max_gap_ms=0; clicks=0
+[rflink] {"PARAM":"20;00","NAME":"EV1527","ID":"085372","SWITCH":"08","CMD":"ON"}
+[rflink.gesture] EV1527 085372/08 -> hold; frames=19; span_ms=720; max_gap_ms=40; clicks=0
+[rflink.gesture] EV1527 085372/08 -> hold_repeat; frames=25; span_ms=960; max_gap_ms=40; clicks=0
+[rflink.gesture] EV1527 085372/08 -> hold_repeat; frames=32; span_ms=1240; max_gap_ms=40; clicks=0
+[rflink.gesture] EV1527 085372/08 -> hold_repeat; frames=39; span_ms=1520; max_gap_ms=40; clicks=0
+[rflink.gesture] EV1527 085372/08 -> release; frames=41; span_ms=1600; max_gap_ms=40; clicks=0
+[rflink.gesture] EV1527 085372/08 -> hold_release; frames=41; span_ms=1600; max_gap_ms=40; clicks=0
+hold_frames=41; legacy_json=1; [rflink.gesture] EV1527 085372/08 -> press; frames=1; span_ms=0; max_gap_ms=0; clicks=0
+[rflink] {"PARAM":"20;00","NAME":"EV1527","ID":"085372","SWITCH":"08","CMD":"ON"}
+[rflink.gesture] EV1527 085372/08 -> release; frames=3; span_ms=80; max_gap_ms=40; clicks=1
+[rflink.gesture] EV1527 085372/08 -> press; frames=1; span_ms=0; max_gap_ms=0; clicks=1
+[rflink.gesture] EV1527 085372/08 -> release; frames=3; span_ms=80; max_gap_ms=40; clicks=2
+[rflink.gesture] EV1527 085372/08 -> double; frames=3; span_ms=80; max_gap_ms=40; clicks=2
+[rflink.gesture] EV1527 085372/08 -> press; frames=1; span_ms=0; max_gap_ms=0; clicks=0
+[rflink] {"PARAM":"20;00","NAME":"EV1527","ID":"085372","SWITCH":"08","CMD":"ON"}
+[rflink.gesture] EV1527 085372/08 -> release; frames=3; span_ms=80; max_gap_ms=40; clicks=1
+[rflink.gesture] EV1527 085372/08 -> press; frames=1; span_ms=0; max_gap_ms=0; clicks=1
+[rflink.gesture] EV1527 085372/08 -> release; frames=3; span_ms=80; max_gap_ms=40; clicks=2
+[rflink.gesture] EV1527 085372/08 -> press; frames=1; span_ms=0; max_gap_ms=0; clicks=2
+[rflink.gesture] EV1527 085372/08 -> release; frames=3; span_ms=80; max_gap_ms=40; clicks=3
+[rflink.gesture] EV1527 085372/08 -> triple; frames=3; span_ms=80; max_gap_ms=40; clicks=3
+[rflink.gesture] EV1527 01fac2/08 -> press; frames=1; span_ms=0; max_gap_ms=0; clicks=0
+[rflink] {"PARAM":"20;00","NAME":"EV1527","ID":"01fac2","SWITCH":"08","CMD":"ON"}
+[rflink.gesture] EV1527 01fac2/08 -> release; frames=3; span_ms=80; max_gap_ms=40; clicks=1
+[rflink.gesture] EV1527 01fac2/08 -> single; frames=3; span_ms=80; max_gap_ms=40; clicks=1
+[rflink] {"PARAM":"20;00","NAME":"EV1527","ID":"085372","SWITCH":"04","CMD":"ON"}
+[rflink.gesture] EV1527 085372/08 -> press; frames=1; span_ms=0; max_gap_ms=0; clicks=0
+[rflink] {"PARAM":"20;00","NAME":"EV1527","ID":"085372","SWITCH":"08","CMD":"ON"}
+[rflink] RFLink decode OFF (RF capture remains active)
+[rflink.gesture] EV1527 085372/08 -> cancel; frames=3; span_ms=80; max_gap_ms=40; clicks=0
+[rflink] RFLink decode ON (RF capture remains active)
+PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
+
+EXIT 0

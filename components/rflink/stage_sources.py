@@ -66,7 +66,25 @@ def stage(repo: Path, destination: Path, selection="configured") -> list[int]:
     for token in binary_literals:
         registry += [f"#ifndef {token}", f"#define {token} 0b{token[1:]}", "#endif"]
     registry += [f"#define PLUGIN_{n:03d}" for n in ids]
-    registry += [f'#include "Plugins/Plugin_{n:03d}.c.inc"' for n in ids]
+    for n in ids:
+        if n == 83:
+            # Audited legacy Brel/Dooya RX uses char * for four PSTR results,
+            # but ONLY reads them through display_Name(). Keep both the original
+            # source and the build copy byte-identical. Restore the framework
+            # macro immediately after this one include; never use -fpermissive.
+            registry += [
+                "// Plugin_083 read-only legacy pointer compatibility (v0.1.5).",
+                '#pragma push_macro("PSTR")',
+                "#undef PSTR",
+                "#if defined(PSTRN) && defined(PSTR_ALIGN)",
+                "#define PSTR(s) (const_cast<char *>(PSTRN(s, PSTR_ALIGN)))",
+                "#else",
+                "#define PSTR(s) ([]() -> char * { alignas(4) static const char text[] PROGMEM = (s); return const_cast<char *>(text); }())",
+                "#endif",
+            ]
+        registry += [f'#include "Plugins/Plugin_{n:03d}.c.inc"']
+        if n == 83:
+            registry += ['#pragma pop_macro("PSTR")']
     registry += ["struct PluginEntry { unsigned id; bool (*decode)(byte, char *); };",
                  "static const PluginEntry RX_PLUGINS[] = {"]
     registry += [f"  {{{n}, &Plugin_{n:03d}}}," for n in ids]

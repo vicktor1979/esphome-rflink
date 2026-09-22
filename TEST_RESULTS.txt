@@ -1,73 +1,68 @@
-RFLink v0.1.3 test report – 2026-09-22
+RFLink v0.1.5 – Mért eredmények, 2026-09-22
 
-Scope: next-trial API-first controller + full RF field helpers/package.
-NOT a completed ESPHome firmware build or a real-device RF/API test.
-No esphome installation is available here; network dependency retrieval failed.
+KÖRNYEZET
+Linux x86_64; GNU g++ 14.2.0; Python 3.13.5.
+-std=gnu++20, ESP8266 és USE_ESP8266 makrók, host Arduino/ESPHome helyettesítők.
+Szintaxispróbák: -fno-exceptions -fno-rtti -Wall.
+Futási próbák: ASan+UBSan; const PSTR + PROT_NONE védett flash-helyettesítő.
+A célgép utasításkészlete és Arduino SDK-ja NEM fut a tesztben.
 
-=== Actual new YAML-lambda/helper tests (g++ / json-c mock / ASan+UBSan) ===
-PASS: exact routing + identical events + coalesced snapshots + all 25 numeric fields + metadata + BAT/PIR/SMOKE + invalidation + strict formats + per-device isolation + expiry refresh + UTF-8 JSON parts + API-ready gate/rollover
-PASS: YAML syntax, unique keys/IDs, unchanged GPIO/timing/plugin selection; full device generator
-NOT TESTED: real ESPHome validation/code generation, ArduinoJson, ESP8266 firmware build/flash size, Wi-Fi/API/OTA hardware, elapsed timeout scheduling.
+EREDMÉNY
+A tesztprogram kilépési kódja: 0.
+A javítás nélküli reprodukció elvárt kilépési kódja: 1; négy const char* -> char* hiba.
+A javított all/configured/4/2 összeállítások fordítása és futási próbái: 0.
+Az eredeti ZIP mind az 54 pluginmappabeli fájlja közvetlen byte-összehasonlítással is egyezik.
 
-=== Assembled-source legacy regression + formatter + runtime gate tests ===
-PASS: all 54 RFLink/Plugins files equal original uploaded ZIP, byte for byte.
-PASS: PROGMEM-fixed engine unchanged; runtime gate cpp unchanged from working v0.1.2-diag.
-[rflink] RFLink decode OFF (RF capture remains active)
-[rflink] RFLink decode ON (RF capture remains active)
-[rflink] {"PARAM":"20;00","NAME":"EV1527","ID":"085372","SWITCH":"08","CMD":"ON"}
-[rflink] RFLink decode OFF (RF capture remains active)
-[rflink] RFLink decode ON (RF capture remains active)
-[rflink] {"PARAM":"20;01","NAME":"EV1527","ID":"085372","SWITCH":"08","CMD":"ON"}
-[rflink] RFLink decode OFF (RF capture remains active)
-[rflink] RFLink RX compatibility bridge v0.1.2-diag (runtime decode gate):
-[rflink]   RX plugins compiled: 2
-[rflink]   Decode enabled: NO
-[rflink]   Arduino framework; original plugin sources; TX not implemented
-PASS runtime gate: OFF skips decode+callback; ON decodes EV1527 085372/08; duplicate suppression; OFF/ON resume; diagnostic counters/timer arithmetic.
-PASS: unchanged engine generated all 34 supported data/metadata keys as valid JSON (468 bytes).
-PASS: all 54 source hashes; source discovery and selections.
-Selection [61]: 2 RX plugins.
-{"PARAM":"20;00","NAME":"EV1527","ID":"01fac2","SWITCH":"08","CMD":"ON"}
-PASS: EV1527 synthetic waveform and boundary checks; 2 RX plugins compiled.
-Selection [34, 40, 61]: 4 RX plugins.
-{"PARAM":"20;00","NAME":"EV1527","ID":"01fac2","SWITCH":"08","CMD":"ON"}
-PASS: EV1527 synthetic waveform and boundary checks; 4 RX plugins compiled.
-Selection configured: 47 RX plugins.
-In file included from /mnt/data/work_rflink/assembled-v013/components/rflink/rflink_engine.cpp:3:
-/tmp/rflink-test-v7j7rqwg/src/rflink_vendor/Plugins/Plugin_083.c.inc: In function ‘boolean rflink_legacy::Plugin_083(byte, char*)’:
-/tmp/rflink-test-v7j7rqwg/src/rflink_vendor/Plugins/Plugin_083.c.inc:114:34: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
-  114 |             commandstring = PSTR("CMD=UP");
-/mnt/data/work_rflink/assembled-v013/tests/stubs/Arduino.h:32:18: note: in definition of macro ‘PSTR’
-   32 | #define PSTR(x) (x)
-      |                  ^
-/tmp/rflink-test-v7j7rqwg/src/rflink_vendor/Plugins/Plugin_083.c.inc:117:34: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
-  117 |             commandstring = PSTR("CMD=DOWN");
-/mnt/data/work_rflink/assembled-v013/tests/stubs/Arduino.h:32:18: note: in definition of macro ‘PSTR’
-   32 | #define PSTR(x) (x)
-      |                  ^
-/tmp/rflink-test-v7j7rqwg/src/rflink_vendor/Plugins/Plugin_083.c.inc:120:34: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
-  120 |             commandstring = PSTR("CMD=STOP");
-/mnt/data/work_rflink/assembled-v013/tests/stubs/Arduino.h:32:18: note: in definition of macro ‘PSTR’
-   32 | #define PSTR(x) (x)
-      |                  ^
-/tmp/rflink-test-v7j7rqwg/src/rflink_vendor/Plugins/Plugin_083.c.inc:123:34: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
-  123 |             commandstring = PSTR("CMD=SETUP");
-/mnt/data/work_rflink/assembled-v013/tests/stubs/Arduino.h:32:18: note: in definition of macro ‘PSTR’
-   32 | #define PSTR(x) (x)
-      |                  ^
-{"PARAM":"20;00","NAME":"EV1527","ID":"01fac2","SWITCH":"08","CMD":"ON"}
-NOTE: full legacy plugin set re-emits this duplicate in the host test; shared CRC state is unchanged.
-PASS: EV1527 synthetic waveform and boundary checks; 47 RX plugins compiled.
-Selection all: 48 RX plugins.
-{"PARAM":"20;00","NAME":"EV1527","ID":"01fac2","SWITCH":"08","CMD":"ON"}
-NOTE: full legacy plugin set re-emits this duplicate in the host test; shared CRC state is unchanged.
-PASS: EV1527 synthetic waveform and boundary checks; 48 RX plugins compiled.
-Host tests passed. ESP8266/ESP32 firmware build and real-radio tests have NOT been run here.
+PASS: 54 original plugin/config/old-file SHA256 digests match the original manifest.
+PASS: all=48; configured=47; the difference is Plugin_083; explicit selection and missing-ID validation.
+PASS: YAML unique keys/IDs; all RX selection; receiver timings, API gate, field and gesture packages retained.
+PASS: Unpatched all-plugin build fails with real const PSTR typing (Plugin_083); regression reproduced.
+PASS: HOST C++20 syntax build: all, 48 RX plugins; byte-identical staged plugins; TX disabled.
+PASS: HOST C++20 syntax build: configured, 47 RX plugins; byte-identical staged plugins; TX disabled.
+PASS: HOST C++20 syntax build: ev1527, 2 RX plugins; byte-identical staged plugins; TX disabled.
+PASS: HOST C++20 syntax build: weather_ev1527, 4 RX plugins; byte-identical staged plugins; TX disabled.
+PASS: All 48 per-plugin selections compile individually (001 automatically present).
+PASS: Scoped PSTR fallback compiles; framework const PSTR type is restored afterwards.
+PASS: 29 gesture scenarios (single/multi/hold/cancel/identity/rollover/safety).
+PASS: Real bridge + gesture YAML lambda execution, guarded const flash, ASan/UBSan: ev1527. PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
+PASS: Real bridge + gesture YAML lambda execution, guarded const flash, ASan/UBSan: weather_ev1527. PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
+PASS: Real bridge + gesture YAML lambda execution, guarded const flash, ASan/UBSan: configured. PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
+PASS: Real bridge + gesture YAML lambda execution, guarded const flash, ASan/UBSan: all. PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
+PASS: Brel four command paths, flash reads and PSTR restoration: brel
+PASS: Brel four command paths, flash reads and PSTR restoration: all
+PASS: formatter RAM/PSTR strings, escaping, UTF-8, null/empty, size limit.
+PASS: Original 54 plugin/config/old files remain unchanged after every test.
+LIMIT: Host compiler and Arduino/ESPHome test doubles; NOT a full ESPHome/Xtensa firmware build.
+LIMIT: No real RF, Wi-Fi, API, OTA, flash size, target RAM or long-term stability test was possible.
+KNOWN: Original Plugin_037 printf format warning is not suppressed.
+KNOWN: Full legacy decoder sets can emit repeated EV1527 JSON; gesture frame logic passes independently.
+KNOWN: Original Plugin_083 emits duplicate NAME fields for its command; source semantics unchanged.
 
-Notes:
-- All new field-conversion and routing tests use a json-c based adapter, not real ArduinoJson.
-- Actual ESPHome YAML semantic validation/code generation, OTA callback wiring, template-switch restore, timeout scheduling, RAM/flash size and real API are NOT verified by these host tests.
-- The formatter integration emitted 34 keys in valid JSON, 468 bytes.
-- Full configured/all plugin sets still share the existing CRC/repeat state; host tests showed repeated EV1527 frames with those full sets. No change was made to that legacy behavior.
-- The two-plugin [61] selection remains the default next trial. [34,40,61] is a separate later experiment.
-- Existing plugin compiler warnings were not hidden or patched away.
+KIEGÉSZÍTŐ MEZŐFELDOLGOZÁSI TESZT
+A v0.1.3 mezőfeldolgozó tesztjét újrafuttattuk. A ténylegesen vizsgált
+rflink_fields.h és rflink-ha-all-data.yaml bájtról bájtra egyezik a v0.1.5 csomagéval.
+Kilépési kód: 0. 25 numerikus mező, metaadatok, BAT/PIR/SMOKE, hiányzó/hibás adatok,
+eszközönkénti elkülönítés, elavulás, UTF-8 JSON-részek, API-indítási kapu.
+Ez json-c alapú host JSON-helyettesítő, nem az ArduinoJson tényleges megvalósítása.
+
+CI BEMENET ÉS MUNKAFOLYAMAT
+A három generált .ci konfiguráció YAML-szintaxisa, relatív forrásútvonalai, nodemcuv2
+választása és titkosított API-beállítása ellenőrizve. A workflow YAML feldolgozható.
+A workflow célverziója ESPHome 2026.9.0. NINCS ELINDÍTOTT/LEFUTOTT GITHUB ACTIONS EREDMÉNY.
+
+NEM TÖRTÉNT
+Teljes ESPHome-validálás/kódgenerálás a valódi csomaggal, Xtensa firmware-fordítás/link,
+valódi flash/RAM méretmérés, ESP8266 hardverteszt, Wi-Fi/API/OTA-vizsgálat, összes protokoll
+rádiós tesztje. A célfordító nem állt rendelkezésre; az ESPHome-csomag letöltési kísérlete
+sikertelen (a környezetben elérhető csomagforrás nem adott ilyen telepíthető csomagot).
+A felhasználó új fordítási hibájának pontos sorát nem kaptuk meg.
+
+FORRÁSOK ÉS NAPLÓK
+TEST_LOGS/expected_unpatched_083_failure.log: tényleges negatív reprodukció.
+TEST_LOGS/compile_all.log: javított all forrásfordítás.
+TEST_LOGS/compile_individual_*.log: 48 külön pluginválasztás.
+TEST_LOGS/gesture_integration_run_all.log: teljes készlet + tényleges gesztuslambdák.
+TEST_LOGS/brel_run_all.log: négy eredeti Brel-parancság, a második NAME ismert marad.
+TEST_LOGS/formatter_run_all.log: védett PSTR-olvasás és JSON-formázás.
+TEST_LOGS/field-regression.log: külön mezőfeldolgozó regresszió.
+TEST_LOGS/esphome-install-attempt.log: sikertelen célkörnyezeti csomagbeszerzés.

@@ -119,7 +119,8 @@ void reset() {
 }
 size_t plugin_count() { return sizeof(RX_PLUGINS) / sizeof(RX_PLUGINS[0]); }
 
-bool decode(const std::vector<int32_t> &timings, std::string &json) {
+bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObservation *observation) {
+  if (observation != nullptr) *observation = FrameObservation{};
   json.clear(); clear_message(); RawSignal = RawSignalStruct{};
   if (timings.empty()) return false;
   size_t first = 0, end = timings.size();
@@ -150,6 +151,15 @@ bool decode(const std::vector<int32_t> &timings, std::string &json) {
   for (size_t index = 0; index < plugin_count(); ++index) {
     SignalHash = static_cast<byte>(index);
     if (RX_PLUGINS[index].decode(0, nullptr)) {
+      // Plugin_061 validates the bits BEFORE its duplicate check. Both its new
+      // frame path and its duplicate path return with SignalCRC == bitstream.
+      // Do not reset CRC/timers, re-run the plugin, or bypass its legacy filter.
+      // This mapping is deliberately limited to the uploaded EV1527 plugin.
+      if (observation != nullptr && RX_PLUGINS[index].id == 61) {
+        observation->valid = true;
+        observation->plugin_id = 61;
+        observation->code = static_cast<uint32_t>(SignalCRC) & 0x00FFFFFFUL;
+      }
       SignalHashPrevious = SignalHash;
       RepeatingTimer = millis() + SIGNAL_REPEAT_TIME_MS;
       if (finished && !overflow) json = output;
