@@ -1,4 +1,5 @@
 #pragma once
+#include "rflink_fields.h"  // v0.1.3: data conversion and API-ready gate helpers
 #include <cstdint>
 #include <functional>
 #include <string>
