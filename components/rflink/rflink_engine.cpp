@@ -32,12 +32,21 @@ void append(const char *text) {
 void escaped(const char *text) {
   append("\"");
   if (text != nullptr) {
-    for (const unsigned char *p = reinterpret_cast<const unsigned char *>(text); *p; ++p) {
-      if (*p == '"') append("\\\"");
-      else if (*p == '\\') append("\\\\");
-      else if (*p < 0x20) {
-        char encoded[7]; std::snprintf(encoded, sizeof(encoded), "\\u%04x", *p); append(encoded);
-      } else { char character[2] = {static_cast<char>(*p), 0}; append(character); }
+    // Legacy plugins pass both PSTR/PROGMEM strings and RAM buffers as
+    // const char*. ESP8266 cannot read flash with ordinary byte loads (*p).
+    // pgm_read_byte() uses an aligned word access and also accepts RAM on
+    // our supported ESP8266/ESP32 Arduino targets. Do not use strlen(),
+    // std::string(text), or output.append(text) on these input pointers.
+    for (const unsigned char *p = reinterpret_cast<const unsigned char *>(text); ; ++p) {
+      const unsigned char value = pgm_read_byte(p);
+      if (value == 0) break;
+      if (value == '"') append("\\\"");
+      else if (value == '\\') append("\\\\");
+      else if (value < 0x20) {
+        char encoded[7];
+        std::snprintf(encoded, sizeof(encoded), "\\u%04x", static_cast<unsigned>(value));
+        append(encoded);
+      } else { char character[2] = {static_cast<char>(value), 0}; append(character); }
       if (overflow) break;
     }
   }

@@ -7,7 +7,7 @@ namespace rflink {
 static const char *const TAG = "rflink";
 void RFLinkComponent::setup() { ::rflink_legacy::reset(); }
 void RFLinkComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1:");
+  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.1 (PROGMEM fix):");
   ESP_LOGCONFIG(TAG, "  RX plugins compiled: %u", static_cast<unsigned>(::rflink_legacy::plugin_count()));
   ESP_LOGCONFIG(TAG, "  Arduino framework; original plugin sources; TX not implemented");
 }
