@@ -1,0 +1,93 @@
+# OPTIONAL, reusable per-device TEMP/HUM/BAT mapping for this RFLink formatter.
+# Include with vars: sensor_prefix, sensor_name, rf_protocol, rf_device_id.
+# Call ${sensor_prefix}_process from rflink.on_message with message: !lambda return x;
+# Does NOT auto-detect an unknown sensor or silently combine different RF IDs.
+# TEMP: hexadecimal sign-magnitude with 0x8000 sign flag, tenths of a degree.
+# This is the format used by the uploaded Cresta/Mebus plugins.
+# HUM: decimal JSON number. BAT: "OK" or "LOW" (not a battery percentage).
+
+defaults:
+  stale_after: 60min
+
+json:
+
+sensor:
+  - platform: template
+    id: ${sensor_prefix}_temperature
+    name: "${sensor_name} hőmérséklet"
+    internal: false
+    device_class: temperature
+    state_class: measurement
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: never
+    filters:
+      - timeout: ${stale_after}
+  - platform: template
+    id: ${sensor_prefix}_humidity
+    name: "${sensor_name} páratartalom"
+    internal: false
+    device_class: humidity
+    state_class: measurement
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    update_interval: never
+    filters:
+      - timeout: ${stale_after}
+
+binary_sensor:
+  - platform: template
+    id: ${sensor_prefix}_battery_low
+    name: "${sensor_name} alacsony elem"
+    internal: false
+    entity_category: diagnostic
+    device_class: battery
+    filters:
+      - timeout: ${stale_after}
+
+script:
+  - id: ${sensor_prefix}_process
+    mode: queued
+    max_runs: 5
+    parameters:
+      message: string
+    then:
+      - lambda: |-
+          const bool valid = json::parse_json(message, [&](JsonObject root) -> bool {
+            const std::string protocol = root["NAME"] | "";
+            const std::string device = root["ID"] | "";
+            if (protocol != "${rf_protocol}" || device != "${rf_device_id}") return true;
+
+            const std::string raw = root["TEMP"] | "";
+            if (!raw.empty()) {
+              bool valid_hex = raw.size() <= 4;
+              uint32_t value = 0;
+              for (char digit : raw) {
+                uint8_t nibble;
+                if (digit >= '0' && digit <= '9') nibble = digit - '0';
+                else if (digit >= 'a' && digit <= 'f') nibble = digit - 'a' + 10;
+                else if (digit >= 'A' && digit <= 'F') nibble = digit - 'A' + 10;
+                else { valid_hex = false; break; }
+                value = (value << 4) | nibble;
+              }
+              if (valid_hex) {
+                float temperature = static_cast<float>(value & 0x7FFF) / 10.0f;
+                if (value & 0x8000) temperature = -temperature;
+                // Publish even unchanged samples so the timeout is refreshed.
+                id(${sensor_prefix}_temperature).publish_state(temperature);
+              } else {
+                ESP_LOGW("rflink.api", "Hibas TEMP mezo: %s", raw.c_str());
+              }
+            }
+
+            if (root["HUM"].is<float>() || root["HUM"].is<int>()) {
+              const float humidity = root["HUM"].as<float>();
+              if (humidity >= 0.0f && humidity <= 100.0f)
+                id(${sensor_prefix}_humidity).publish_state(humidity);
+            }
+            const std::string battery = root["BAT"] | "";
+            if (battery == "LOW") id(${sensor_prefix}_battery_low).publish_state(true);
+            else if (battery == "OK") id(${sensor_prefix}_battery_low).publish_state(false);
+            return true;
+          });
+          if (!valid) ESP_LOGW("rflink.api", "Hibas JSON az idojarasi erzekelohoz.");

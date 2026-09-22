@@ -1,0 +1,30 @@
+# FRAGMENT: OPTIONAL alternative to the API-only on_message in example 01.
+# Keep your existing broker, credentials, birth/will messages and other settings.
+# Merge these options into the EXISTING mqtt block; do not create a second one.
+mqtt:
+  broker: !secret mqtt_broker
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  log_topic: null
+  discovery: false
+  # A broker outage should not reboot a receiver using the native API.
+  reboot_timeout: 0s
+
+rflink:
+  # KEEP existing id, receiver_id, rx_plugins, etc.
+  # Replace the on_message block; DO NOT append another API process call.
+  on_message:
+    then:
+      - script.execute:
+          id: rflink_api_process
+          message: !lambda return x;
+      - mqtt.publish:
+          topic: RFLink/msg
+          qos: 0
+          retain: false
+          payload: !lambda return x;
+
+# This simple MQTT payload is the unchanged decoder JSON only.
+# To preserve TIME/IP/MAC/Wi-Fi SIGNAL fields, keep your PREVIOUS working
+# mqtt.publish payload lambda here instead of `return x;`.
+# API entity processing does not need those extra fields or MQTT at all.

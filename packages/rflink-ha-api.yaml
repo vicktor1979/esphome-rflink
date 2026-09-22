@@ -1,0 +1,189 @@
+# RFLink v0.1.1-compatible native Home Assistant entity package.
+# This file does NOT change the decoder, radio pins, timings, Wi-Fi or MQTT.
+# Add the package, then call rflink_api_process from rflink.on_message.
+# No secrets in this file: it can also be loaded directly from GitHub.
+
+substitutions:
+  rflink_api_remote_1_id: "085372"
+  rflink_api_remote_1_name: "RF 085372 távirányító"
+  rflink_api_remote_2_id: "01fac2"
+  rflink_api_remote_2_name: "Konyhai távirányító"
+  # 0 = do not add another repeat filter on top of the RFLink decoder.
+  # For example 200 = at most one identical event per remote every 200 ms.
+  # This is a rate limit, NOT physical press/release or long-press detection.
+  rflink_api_repeat_ms: "0"
+
+json:
+
+globals:
+  - id: rflink_api_packet_count
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+
+sensor:
+  - platform: template
+    id: rflink_api_received_count
+    name: "RF dekódolt csomagok"
+    icon: mdi:counter
+    entity_category: diagnostic
+    internal: false
+    accuracy_decimals: 0
+    state_class: total_increasing
+    unit_of_measurement: "db"
+    # Diagnostic only; avoid a separate counter update for every RF repeat.
+    update_interval: 5s
+    lambda: return static_cast<float>(id(rflink_api_packet_count));
+
+text_sensor:
+  - platform: template
+    id: rflink_api_last_protocol
+    name: "RF utolsó protokoll"
+    icon: mdi:radio-tower
+    entity_category: diagnostic
+    internal: false
+    update_interval: never
+  - platform: template
+    id: rflink_api_last_id
+    name: "RF utolsó azonosító"
+    icon: mdi:identifier
+    entity_category: diagnostic
+    internal: false
+    update_interval: never
+  - platform: template
+    id: rflink_api_last_switch
+    name: "RF utolsó gomb"
+    icon: mdi:gesture-tap-button
+    entity_category: diagnostic
+    internal: false
+    update_interval: never
+  - platform: template
+    id: rflink_api_last_command
+    name: "RF utolsó parancs"
+    icon: mdi:remote
+    entity_category: diagnostic
+    internal: false
+    update_interval: never
+  - platform: template
+    id: rflink_api_last_message
+    name: "RF utolsó üzenet"
+    icon: mdi:code-json
+    entity_category: diagnostic
+    internal: false
+    update_interval: never
+
+event:
+  # One event entity per remote, not one artificial ON/OFF sensor per press.
+  # These are the possible EV1527 four-bit SWITCH values, including combinations.
+  - platform: template
+    id: rflink_api_remote_1
+    name: "${rflink_api_remote_1_name}"
+    device_class: button
+    internal: false
+    event_types:
+      - button_00
+      - button_01
+      - button_02
+      - button_03
+      - button_04
+      - button_05
+      - button_06
+      - button_07
+      - button_08
+      - button_09
+      - button_0a
+      - button_0b
+      - button_0c
+      - button_0d
+      - button_0e
+      - button_0f
+  - platform: template
+    id: rflink_api_remote_2
+    name: "${rflink_api_remote_2_name}"
+    device_class: button
+    internal: false
+    event_types:
+      - button_00
+      - button_01
+      - button_02
+      - button_03
+      - button_04
+      - button_05
+      - button_06
+      - button_07
+      - button_08
+      - button_09
+      - button_0a
+      - button_0b
+      - button_0c
+      - button_0d
+      - button_0e
+      - button_0f
+
+script:
+  - id: rflink_api_process
+    mode: queued
+    max_runs: 5
+    parameters:
+      message: string
+    then:
+      - lambda: |-
+          const bool valid = json::parse_json(message, [&](JsonObject root) -> bool {
+            const std::string protocol = root["NAME"] | "";
+            const std::string device = root["ID"] | "";
+            const std::string button = root["SWITCH"] | "";
+            const std::string command = root["CMD"] | "";
+            if (protocol.empty() || device.empty()) return false;
+
+            ++id(rflink_api_packet_count);
+            // Do not flood the API with unchanged diagnostic fields.
+            auto publish_changed = [](auto *sensor, const std::string &value) {
+              if (!sensor->has_state() || sensor->state != value)
+                sensor->publish_state(value);
+            };
+            publish_changed(id(rflink_api_last_protocol), protocol);
+            publish_changed(id(rflink_api_last_id), device);
+            // Missing fields are cleared, not inherited from the last remote.
+            publish_changed(id(rflink_api_last_switch), button);
+            publish_changed(id(rflink_api_last_command), command);
+            // HA entity states must remain short. Never publish a chopped JSON.
+            const std::string preview = message.size() <= 250 ? message :
+                "RFLink uzenet: " + std::to_string(message.size()) +
+                " bajt; a teljes JSON az ESPHome naplojaban olvashato.";
+            publish_changed(id(rflink_api_last_message), preview);
+
+            // The unchanged Plugin_061 emits ON for a received EV1527 packet.
+            // Do not infer release, toggle state, or a genuine long press.
+            if (protocol != "EV1527" || command != "ON") return true;
+            int remote_index = -1;
+            if (device == "${rflink_api_remote_1_id}") remote_index = 0;
+            else if (device == "${rflink_api_remote_2_id}") remote_index = 1;
+            if (remote_index < 0) return true;  // Unknown RF devices: diagnostics only.
+            if (button.size() != 2 || button[0] != '0') return true;
+            char nibble = button[1];
+            if (nibble >= 'A' && nibble <= 'F') nibble += 'a' - 'A';
+            if (!((nibble >= '0' && nibble <= '9') || (nibble >= 'a' && nibble <= 'f')))
+              return true;
+            const std::string event_type = std::string("button_0") + nibble;
+
+            static std::string last_type[2];
+            static uint32_t last_ms[2] = {0, 0};
+            static bool have_last[2] = {false, false};
+            constexpr uint32_t repeat_ms = ${rflink_api_repeat_ms};
+            const uint32_t now = millis();
+            if (repeat_ms > 0 && have_last[remote_index] &&
+                last_type[remote_index] == event_type &&
+                static_cast<uint32_t>(now - last_ms[remote_index]) < repeat_ms)
+              return true;
+            last_type[remote_index] = event_type;
+            last_ms[remote_index] = now;
+            have_last[remote_index] = true;
+
+            // Trigger every accepted event, even if its type is unchanged.
+            if (remote_index == 0) id(rflink_api_remote_1).trigger(event_type);
+            else id(rflink_api_remote_2).trigger(event_type);
+            ESP_LOGD("rflink.api", "EV1527 %s -> %s", device.c_str(), event_type.c_str());
+            return true;
+          });
+          if (!valid)
+            ESP_LOGW("rflink.api", "Hibas JSON vagy hianyzo NAME/ID; nincs API esemeny.");

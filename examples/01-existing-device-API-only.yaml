@@ -1,0 +1,24 @@
+# FRAGMENT: merge into YOUR EXISTING device YAML. Not a complete device file.
+# First upload packages/rflink-ha-api.yaml to your existing GitHub repository.
+# Replace YOUR_GITHUB_USER and the repository/branch if yours are different.
+packages:
+  rflink_api: github://YOUR_GITHUB_USER/esphome-rflink/packages/rflink-ha-api.yaml@main
+
+# Keep your existing api settings/key. Add this block only when missing.
+api:
+  encryption:
+    key: !secret rflink_api_key
+  reboot_timeout: 0s
+
+rflink:
+  # KEEP your existing id, receiver_id, rx_plugins and log_messages here.
+  # Replace only the old on_message block with this one.
+  on_message:
+    then:
+      - script.execute:
+          id: rflink_api_process
+          message: !lambda return x;
+
+# API-only mode: remove the old mqtt: block and mqtt.publish actions.
+# Keep remote_receiver, GPIO power/enable, OTA, Wi-Fi and external_components
+# exactly as they are in the working configuration. No raw dump/on_raw logger.

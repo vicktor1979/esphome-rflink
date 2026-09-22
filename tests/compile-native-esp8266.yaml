@@ -1,0 +1,37 @@
+# BUILD-ONLY FIXTURE. No RF hardware configured. NOT your production firmware.
+esphome:
+  name: rflink-native-build-test
+  on_boot:
+    then:
+      - if:
+          # Exercise action validation/code generation without emitting fake RF.
+          condition:
+            lambda: return false;
+          then:
+            - script.execute:
+                id: rflink_api_process
+                message: '{"NAME":"EV1527","ID":"085372","SWITCH":"08","CMD":"ON"}'
+            - script.execute:
+                id: test_weather_process
+                message: '{"NAME":"Cresta","ID":"1234","TEMP":"00ea","HUM":43,"BAT":"OK"}'
+esp8266:
+  board: d1_mini
+wifi:
+  ssid: build-test
+  password: build-test-password
+api:
+  # Build-test key only. Not a real credential and must not be reused for deployment.
+  encryption:
+    key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+  reboot_timeout: 0s
+logger:
+packages:
+  native_api: !include ../packages/rflink-ha-api.yaml
+  test_weather: !include
+    file: ../packages/rflink-ha-weather.yaml
+    vars:
+      sensor_prefix: test_weather
+      sensor_name: Test weather
+      rf_protocol: Cresta
+      rf_device_id: '1234'
+      stale_after: 60min

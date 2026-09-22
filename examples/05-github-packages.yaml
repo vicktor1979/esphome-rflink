@@ -1,0 +1,20 @@
+# FRAGMENT: GitHub loading of the native package AND an optional weather mapping.
+# Replace repository, branch, and example weather NAME/ID values before use.
+# Use this as an ALTERNATIVE packages block, not in addition to example 01.
+packages:
+  rflink_native:
+    url: https://github.com/YOUR_GITHUB_USER/esphome-rflink
+    ref: main
+    refresh: 0s
+    files:
+      - packages/rflink-ha-api.yaml
+      - path: packages/rflink-ha-weather.yaml
+        vars:
+          sensor_prefix: outdoor_weather
+          sensor_name: "Udvari érzékelő"
+          rf_protocol: "Cresta"
+          rf_device_id: "REPLACE_WITH_ACTUAL_ID"
+          stale_after: 60min
+
+# on_message must call BOTH rflink_api_process and outdoor_weather_process,
+# as shown in example 03. Change refresh back to e.g. 5min after initial testing.
