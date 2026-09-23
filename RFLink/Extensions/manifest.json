@@ -1,0 +1,52 @@
+{
+  "version": "0.1.7",
+  "profile": "extended",
+  "new_plugins": {
+    "16": {
+      "path": "decoders/Plugin_016.inc",
+      "name": "Silvercrest socket remotes"
+    },
+    "18": {
+      "path": "decoders/Plugin_018.inc",
+      "name": "Louvolite R1492-6CH-WH"
+    },
+    "48": {
+      "path": "decoders/Plugin_048.inc",
+      "name": "Oregon V2/V3 audited temperature/humidity families"
+    },
+    "49": {
+      "path": "decoders/Plugin_049.inc",
+      "name": "LaCrosse TX141/TX145"
+    },
+    "50": {
+      "path": "decoders/Plugin_050.inc",
+      "name": "Fine Offset WH2 family"
+    },
+    "76": {
+      "path": "decoders/Plugin_076.inc",
+      "name": "CAME TOP-432"
+    },
+    "77": {
+      "path": "decoders/Plugin_077.inc",
+      "name": "Avantek no-CRC base format"
+    }
+  },
+  "overrides": {
+    "1": {
+      "path": "overrides/Plugin_001.c",
+      "base_sha256": "42890a31cfa92ccaa9d79288d5dc2e30076146247319b9134da7170a0f66a06f"
+    },
+    "37": {
+      "path": "overrides/Plugin_037.c",
+      "base_sha256": "576c294c92969b8eecf80478ee2ee80d5b00062279dbb67b1fbfc26b9bd89699"
+    },
+    "72": {
+      "path": "overrides/Plugin_072.c",
+      "base_sha256": "c54b2133af0f0648c51050c0bf1089394acf631e2bfb698f517ba0259b533f57"
+    },
+    "83": {
+      "path": "overrides/Plugin_083.c",
+      "base_sha256": "5156cd9ab2e31fe6b8748b58f85e84746cdaac95c34f0b8df5987a391ccdec35"
+    }
+  }
+}

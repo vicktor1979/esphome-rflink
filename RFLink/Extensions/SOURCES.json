@@ -1,0 +1,160 @@
+{
+  "version": "0.1.7",
+  "prepared_on": "2026-09-23",
+  "original_files_modified": false,
+  "entries": [
+    {
+      "plugin_id": 16,
+      "adapter_file": "decoders/Plugin_016.inc",
+      "adapter_sha256": "fa53cd78d123fd49e8cb8f8e3735737dfd05a6a477b09a88f7ec60499e908dc8",
+      "sources": [
+        "https://raw.githubusercontent.com/cpainchaud/RFLink32/master/RFLink/Plugins/Plugin_016.c"
+      ],
+      "donor_commit": null,
+      "source_access": "Public web text inspected on 2026-09-23; a remote Git checkout / byte-exact donor archive was not obtained. Pinning applies to the distributed adapted files via SHA-256, not an invented donor commit.",
+      "license_note": "RFLink project/file notices retained. Not MIT. 048 also retains the embedded decoder notice. See licenses and THIRD_PARTY_NOTICES.md."
+    },
+    {
+      "plugin_id": 18,
+      "adapter_file": "decoders/Plugin_018.inc",
+      "adapter_sha256": "c4e651219dc96fab18e820934b7e19428983026ae4d29955c0855a12616be0a2",
+      "sources": [
+        "https://raw.githubusercontent.com/cpainchaud/RFLink32/master/RFLink/Plugins/Plugin_018.c"
+      ],
+      "donor_commit": null,
+      "source_access": "Public web text inspected on 2026-09-23; a remote Git checkout / byte-exact donor archive was not obtained. Pinning applies to the distributed adapted files via SHA-256, not an invented donor commit.",
+      "license_note": "RFLink project/file notices retained. Not MIT. 048 also retains the embedded decoder notice. See licenses and THIRD_PARTY_NOTICES.md."
+    },
+    {
+      "plugin_id": 48,
+      "adapter_file": "decoders/Plugin_048.inc",
+      "adapter_sha256": "e0e2ba1b4c01fa3c306a6f1fbf4e6bf151780c1f727c89f5c58353295f2ff95f",
+      "sources": [
+        "user-upload:RFLink-5.5wj(2).zip!/RFLink/Plugins/Plugin_048.old",
+        "https://raw.githubusercontent.com/cpainchaud/RFLink32/master/RFLink/Plugins/Plugin_048.c"
+      ],
+      "donor_commit": null,
+      "source_access": "Public web text inspected on 2026-09-23; a remote Git checkout / byte-exact donor archive was not obtained. Pinning applies to the distributed adapted files via SHA-256, not an invented donor commit.",
+      "license_note": "RFLink project/file notices retained. Not MIT. 048 also retains the embedded decoder notice. See licenses and THIRD_PARTY_NOTICES.md."
+    },
+    {
+      "plugin_id": 49,
+      "adapter_file": "decoders/Plugin_049.inc",
+      "adapter_sha256": "550f1d8f3ba4d562e47a95d89ea7f257020cf97299ed27362ee2f69a196def92",
+      "sources": [
+        "https://raw.githubusercontent.com/merbanan/rtl_433/master/src/devices/lacrosse_tx141x.c",
+        "https://raw.githubusercontent.com/cpainchaud/RFLink32/master/RFLink/Plugins/Plugin_049.c"
+      ],
+      "donor_commit": null,
+      "source_access": "Public web text inspected on 2026-09-23; a remote Git checkout / byte-exact donor archive was not obtained. Pinning applies to the distributed adapted files via SHA-256, not an invented donor commit.",
+      "license_note": "GPL-2.0-or-later attribution retained; new bounded extraction, selected protocol variants only."
+    },
+    {
+      "plugin_id": 50,
+      "adapter_file": "decoders/Plugin_050.inc",
+      "adapter_sha256": "5f1ed91869298f3a7c70e547cfd880bdc69e8ae19602f63bb69e167c7025cae8",
+      "sources": [
+        "https://raw.githubusercontent.com/merbanan/rtl_433/master/src/devices/fineoffset.c"
+      ],
+      "donor_commit": null,
+      "source_access": "Public web text inspected on 2026-09-23; a remote Git checkout / byte-exact donor archive was not obtained. Pinning applies to the distributed adapted files via SHA-256, not an invented donor commit.",
+      "license_note": "GPL-2.0-or-later attribution retained; new bounded extraction, selected protocol variants only."
+    },
+    {
+      "plugin_id": 72,
+      "adapter_file": "decoders/Plugin_072_raw.inc",
+      "adapter_sha256": "f6180f8f44664294ddfc6028bf94a8b78b5b87baabdcc385aac18872302d1d69",
+      "sources": [
+        "https://raw.githubusercontent.com/cpainchaud/RFLink32/master/RFLink/Plugins/Plugin_072.c"
+      ],
+      "donor_commit": null,
+      "source_access": "Public web text inspected on 2026-09-23; a remote Git checkout / byte-exact donor archive was not obtained. Pinning applies to the distributed adapted files via SHA-256, not an invented donor commit.",
+      "license_note": "RFLink project/file notices retained. Not MIT. 048 also retains the embedded decoder notice. See licenses and THIRD_PARTY_NOTICES.md."
+    },
+    {
+      "plugin_id": 76,
+      "adapter_file": "decoders/Plugin_076.inc",
+      "adapter_sha256": "2ca955b44ef647b7df2a0ff2817c61dd8d7451044c311a4d36b2d01849a33869",
+      "sources": [
+        "https://raw.githubusercontent.com/cpainchaud/RFLink32/master/RFLink/Plugins/Plugin_076.cpp"
+      ],
+      "donor_commit": null,
+      "source_access": "Public web text inspected on 2026-09-23; a remote Git checkout / byte-exact donor archive was not obtained. Pinning applies to the distributed adapted files via SHA-256, not an invented donor commit.",
+      "license_note": "RFLink project/file notices retained. Not MIT. 048 also retains the embedded decoder notice. See licenses and THIRD_PARTY_NOTICES.md."
+    },
+    {
+      "plugin_id": 77,
+      "adapter_file": "decoders/Plugin_077.inc",
+      "adapter_sha256": "9805201148e6fc4e758e475b1f6994dd7b6819165250120c02fc600e7f0b0c65",
+      "sources": [
+        "https://raw.githubusercontent.com/cpainchaud/RFLink32/master/RFLink/Plugins/Plugin_077.c"
+      ],
+      "donor_commit": null,
+      "source_access": "Public web text inspected on 2026-09-23; a remote Git checkout / byte-exact donor archive was not obtained. Pinning applies to the distributed adapted files via SHA-256, not an invented donor commit.",
+      "license_note": "RFLink project/file notices retained. Not MIT. 048 also retains the embedded decoder notice. See licenses and THIRD_PARTY_NOTICES.md."
+    },
+    {
+      "plugin_id": 1,
+      "adapter_file": "overrides/Plugin_001.c",
+      "adapter_sha256": "fffadfe21253eae7b83af3f6e55dc6c8011981d59c2197bec7d799aee557b797",
+      "sources": [
+        "user-upload:RFLink-5.5wj(2).zip!/RFLink/Plugins/Plugin_001.c"
+      ],
+      "donor_commit": null,
+      "license_note": "Original RFLink copyright/header retained. Local audited changes; not a claim of importing PR #67 or #73."
+    },
+    {
+      "plugin_id": 37,
+      "adapter_file": "overrides/Plugin_037.c",
+      "adapter_sha256": "5df32fe5e13abec9af6aa7ae2d9c87d0e3124c411b1491822f8c4fe2b6258667",
+      "sources": [
+        "user-upload:RFLink-5.5wj(2).zip!/RFLink/Plugins/Plugin_037.c"
+      ],
+      "donor_commit": null,
+      "license_note": "Original RFLink copyright/header retained. Local audited changes; not a claim of importing PR #67 or #73."
+    },
+    {
+      "plugin_id": 72,
+      "adapter_file": "overrides/Plugin_072.c",
+      "adapter_sha256": "22380e0dff14a72c5e3c38c099c20ad0c89ffa402442812fe13d0a8a47457a0c",
+      "sources": [
+        "user-upload:RFLink-5.5wj(2).zip!/RFLink/Plugins/Plugin_072.c",
+        "https://raw.githubusercontent.com/cpainchaud/RFLink32/master/RFLink/Plugins/Plugin_072.c"
+      ],
+      "donor_commit": null,
+      "license_note": "Original RFLink copyright/header retained. Local audited changes; not a claim of importing PR #67 or #73."
+    },
+    {
+      "plugin_id": 83,
+      "adapter_file": "overrides/Plugin_083.c",
+      "adapter_sha256": "4df010a440ce768ac4e16825cbb7ace13f765e52607fd52a39697a3b500958ca",
+      "sources": [
+        "user-upload:RFLink-5.5wj(2).zip!/RFLink/Plugins/Plugin_083.c"
+      ],
+      "donor_commit": null,
+      "license_note": "Original RFLink copyright/header retained. Local audited changes; not a claim of importing PR #67 or #73."
+    }
+  ],
+  "not_included": [
+    {
+      "id": 17,
+      "why": "Somfy 433.42 MHz/hardware and Manchester path not ported here"
+    },
+    {
+      "id": 51,
+      "why": "Full Hyundai source not accessible for verification"
+    },
+    {
+      "id": 87,
+      "why": "NOX RX branch lacks a proper data output path"
+    },
+    {
+      "pr": "couin3/RFLink#73",
+      "why": "Full FA21RF patch inaccessible; do not claim it was applied"
+    },
+    {
+      "pr": "couin3/RFLink#67",
+      "why": "Full diff inaccessible; own Byron fixes are separately documented"
+    }
+  ]
+}

@@ -15,6 +15,7 @@ struct FrameObservation {
 };
 void reset();
 size_t plugin_count();
+const char *plugin_profile();
 // Returns recognized=true even when an RFLink plugin suppresses a duplicate.
 // Only a nonempty output JSON represents an event that should be published.
 bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObservation *observation = nullptr);

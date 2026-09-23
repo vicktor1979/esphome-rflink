@@ -9,10 +9,11 @@ namespace rflink {
 static const char *const TAG = "rflink";
 void RFLinkComponent::setup() { ::rflink_legacy::reset(); }
 void RFLinkComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.5 (all RX plugins + API gate + EV1527 gestures):");
+  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.7 (optional extended RX plugins; receiver/gestures unchanged):");
+  ESP_LOGCONFIG(TAG, "  Plugin profile: %s", rflink_legacy::plugin_profile());
   ESP_LOGCONFIG(TAG, "  RX plugins compiled: %u", static_cast<unsigned>(::rflink_legacy::plugin_count()));
   ESP_LOGCONFIG(TAG, "  Decode enabled: %s", this->decode_enabled_ ? "YES" : "NO");
-  ESP_LOGCONFIG(TAG, "  Arduino framework; original plugin sources; TX not implemented");
+  ESP_LOGCONFIG(TAG, "  Arduino framework; original archive preserved; optional audited overrides; TX not implemented");
 }
 void RFLinkComponent::set_decode_enabled(bool enabled) {
   if (this->decode_enabled_ == enabled) return;

@@ -11,7 +11,7 @@
 namespace esphome { namespace rflink_data {
 enum class Encoding { PLAIN, SIGN_MAGNITUDE_TENTHS };
 struct FieldSpec { const char *key; uint8_t base; uint32_t max_raw; Encoding encoding; float scale; };
-enum Field : size_t { SET_LEVEL, TEMP, HUM, BARO, HSTATUS, BFORECAST, UV, LUX, RAIN, RAINRATE, WINSP, AWINSP, WINGS, WINDIR, WINCHL, WINTMP, CHIME, CO2, SOUND, KWATT, WATT, CURRENT, DIST, METER, VOLT, FIELD_COUNT };
+enum Field : size_t { SET_LEVEL, TEMP, HUM, BARO, HSTATUS, BFORECAST, UV, LUX, RAIN, RAINRATE, WINSP, AWINSP, WINGS, WINDIR, WINCHL, WINTMP, CHIME, CO2, SOUND, KWATT, WATT, CURRENT, DIST, METER, VOLT, CHAN, WINDIR_DEG, FIELD_COUNT };
 static constexpr FieldSpec FIELDS[FIELD_COUNT] = {
   {"SET_LEVEL", 10, 255u, Encoding::PLAIN, 1.0f},
   {"TEMP", 16, 65535u, Encoding::SIGN_MAGNITUDE_TENTHS, 0.1f},
@@ -38,6 +38,8 @@ static constexpr FieldSpec FIELDS[FIELD_COUNT] = {
   {"DIST", 10, 4294967295u, Encoding::PLAIN, 1.0f},
   {"METER", 10, 4294967295u, Encoding::PLAIN, 1.0f},
   {"VOLT", 10, 4294967295u, Encoding::PLAIN, 1.0f},
+  {"CHAN", 10, 255u, Encoding::PLAIN, 1.0f},
+  {"WINDIR_DEG", 10, 359u, Encoding::PLAIN, 1.0f},
 };
 struct Number { bool present{false}; bool valid{false}; float value{NAN}; };
 

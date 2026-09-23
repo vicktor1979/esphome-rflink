@@ -17,6 +17,7 @@ MULTI_CONF = False
 CODEOWNERS = []
 
 CONF_RX_PLUGINS = "rx_plugins"
+CONF_PLUGIN_PROFILE = "plugin_profile"
 CONF_ON_MESSAGE = "on_message"
 CONF_LOG_MESSAGES = "log_messages"
 _LOGGER = logging.getLogger(__name__)
@@ -32,30 +33,37 @@ def validate_plugins(value):
         selection = cv.one_of("configured", "all", lower=True)(value)
     else:
         selection = cv.ensure_list(cv.int_range(min=1, max=255))(value)
+    return selection
+
+
+def validate_plugin_config(config):
     try:
-        select_plugins(REPO, selection)
+        select_plugins(REPO, config[CONF_RX_PLUGINS], config[CONF_PLUGIN_PROFILE])
     except (OSError, ValueError) as error:
         raise cv.Invalid(str(error)) from error
-    return selection
+    return config
 
 
 CONFIG_SCHEMA = cv.All(
     cv.Schema({
         cv.GenerateID(): cv.declare_id(RFLinkComponent),
         cv.Optional(CONF_RX_PLUGINS, default="configured"): validate_plugins,
+        cv.Optional(CONF_PLUGIN_PROFILE, default="legacy"): cv.one_of("legacy", "extended", lower=True),
         cv.Optional(CONF_LOG_MESSAGES, default=True): cv.boolean,
         cv.Optional(CONF_ON_MESSAGE): automation.validate_automation({
             cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(RFLinkMessageTrigger),
         }),
     }).extend(remote_base.REMOTE_LISTENER_SCHEMA).extend(cv.COMPONENT_SCHEMA),
     cv.only_with_arduino,
+    validate_plugin_config,
 )
 
 
 async def to_code(config):
     # Same build-source staging stage as ESPHome's includes handling. Placed
     # outside src/esphome/, which is maintained/deleted by the component writer.
-    ids = stage(REPO, Path(CORE.relative_src_path("rflink_vendor")), config[CONF_RX_PLUGINS])
+    ids = stage(REPO, Path(CORE.relative_src_path("rflink_vendor")), config[CONF_RX_PLUGINS], config[CONF_PLUGIN_PROFILE])
+    _LOGGER.info("RFLink profile: %s", config[CONF_PLUGIN_PROFILE])
     _LOGGER.info("RFLink RX plugins: %s; source files unchanged; TX disabled",
                  ", ".join(f"{n:03d}" for n in ids))
     var = cg.new_Pvariable(config[CONF_ID])

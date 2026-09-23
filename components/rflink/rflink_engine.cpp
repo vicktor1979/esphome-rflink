@@ -85,6 +85,7 @@ void display_CMD(boolean group, byte cmd) {
                       cmd == CMD_Bright ? "BRIGHT" : cmd == CMD_Dim ? "DIM" : "UNKNOWN";
   std::string command = group ? "ALL" : ""; command += value; text_field("CMD", command.c_str());
 }
+void display_CMDc(const char *v) { text_field("CMD", v); }
 void display_SET_LEVEL(byte v) { decimal_field("SET_LEVEL", v); }
 void display_TEMP(unsigned int v) { hex_field("TEMP", v, 4); }
 void display_HUM(byte v, boolean type) {
@@ -113,16 +114,32 @@ RFLINK_DEC_DISPLAY(METER) RFLINK_DEC_DISPLAY(VOLT)
 
 void reset() {
   RawSignal = RawSignalStruct{};
+#if RFLINK_PROFILE_EXTENDED
+  rf_ext::reset_history();
+#endif
   SignalCRC = SignalCRC_1 = RepeatingTimer = 0;
   SignalHash = 0; SignalHashPrevious = 255;
   sequence = 0; clear_message(); output.reserve(256);
 }
-size_t plugin_count() { return sizeof(RX_PLUGINS) / sizeof(RX_PLUGINS[0]); }
+size_t plugin_count() { return RFLINK_TOTAL_PLUGINS; }
+const char *plugin_profile() { return RFLINK_PLUGIN_PROFILE; }
 
 bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObservation *observation) {
   if (observation != nullptr) *observation = FrameObservation{};
   json.clear(); clear_message(); RawSignal = RawSignalStruct{};
   if (timings.empty()) return false;
+#if RFLINK_PROFILE_EXTENDED
+  const rf_ext::Pulses pulses(timings);
+  if (!pulses.valid) return false;
+  for (const auto &extension : EXT_PLUGINS) {
+    if (extension.decode == nullptr) break;
+    if (extension.decode(pulses)) {
+      if (finished && !overflow) json = output;
+      return true;
+    }
+  }
+  clear_message();
+#endif
   size_t first = 0, end = timings.size();
   // ESPHome timings: positive mark, negative space. RFLink starts at a mark.
   while (first < end && timings[first] < 0) ++first;
@@ -148,7 +165,7 @@ bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObserva
   if (append_timeout) RawSignal.Pulses[dest++] = SIGNAL_END_TIMEOUT_US / RAWSIGNAL_SAMPLE_RATE;
   RawSignal.Number = static_cast<int>(dest - 1);
   // index 0 is a plugin marker, and Number+1 remains the original zero sentinel.
-  for (size_t index = 0; index < plugin_count(); ++index) {
+  for (size_t index = 0; index < sizeof(RX_PLUGINS)/sizeof(RX_PLUGINS[0]); ++index) {
     SignalHash = static_cast<byte>(index);
     if (RX_PLUGINS[index].decode(0, nullptr)) {
       // Plugin_061 validates the bits BEFORE its duplicate check. Both its new

@@ -1,4 +1,4 @@
-# RFLink adatmezők – v0.1.3
+# RFLink adatmezők – v0.1.7 (az eredeti 34 mező változatlan)
 
 A feltöltött display-forrás mezőnevei és ábrázolásai az alap. A működő híd a hexadecimális értékeket idézőjeles JSON-szövegként továbbítja. A táblázat a HA-réteg új feldolgozását írja le. A `nyers` azt jelenti, hogy az egész értéket kiolvassuk a megadott számrendszerből, de nem találunk ki fizikai skálát.
 
@@ -50,3 +50,12 @@ A soros splash `RFLink_ESP` nem vett rádiós adat. A firmware információja az
 `TEMP="00ea"` → 23,4 °C; `WINCHL="8037"` → −5,5 °C; `RAIN="008d"` → 14,1 mm; `WINDIR=4` → 90°. Ezek tesztértékek, nem a felhasználó mért adatai.
 
 A teljes formázótesztből származó 34 kulcsos példa: `examples/synthetic-all-fields.json`. A parser ennek minden definiált mezőjét kezeli; a példafájl a készüléken nem fut le és nem hoz létre mesterséges mérést.
+
+## v0.1.7: két külön új mező
+
+| Mező | JSON-típus | Értelmezés | Korlát |
+|---|---|---|---|
+| `CHAN` | Decimális egész | A dekóder eredeti csatornakódja; nem feltételezzük az 1-től számozást | 0–255 |
+| `WINDIR_DEG` | Decimális egész | Már fokban közölt szélirány, nem szorozzuk 22,5-tel | 0–359° |
+
+A LaCrosse-széladat `AWINSP` marad tized km/h formában; `WINDIR_DEG=315` pontosan 315°-ot jelent, míg a régi `WINDIR=4` változatlanul 90°-ot. A közös diagnosztikához opcionálisan töltsd be a `packages/rflink-ha-extended-fields.yaml` fájlt az eddigi `rflink-ha-data-only.yaml` mellé. Ezek az utolsó csomaghoz tartozó diagnosztikai mezők, nem összekevert állandó mérési sorozatok. A generátor `--channel` opciója pontos `NAME + ID + CHAN` illesztést készít; az alapból választható mérési mezőkben `CHAN,WINDIR_DEG` is használható. A csatornakód eszközfüggő (például LaCrosse 0..3; Oregonban eredeti kód), mindig a vett JSON alapján add meg.

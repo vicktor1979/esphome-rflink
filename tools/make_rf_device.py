@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Generate a small per-device ESPHome package for chosen RFLink fields.
 
-Requires Python 3.9+ and PyYAML (python -m pip install pyyaml).
-Uses the common rflink_fields.h from the v0.1.3 bridge extension.
+Requires Python 3.10+ and PyYAML (python -m pip install pyyaml).
+Uses rflink_fields.h v0.1.7; prior field semantics are retained.
 Never creates, deletes or modifies any RFLink plugin or network setting.
 """
 from __future__ import annotations
@@ -33,7 +33,7 @@ Dumper.add_representer(Literal, lambda d,v:d.represent_scalar('tag:yaml.org,2002
 Dumper.add_representer(Lambda, lambda d,v:d.represent_scalar('!lambda',str(v)))
 Dumper.add_representer(type(None),lambda d,v:d.represent_scalar('tag:yaml.org,2002:null',''))
 
-def generate(prefix: str, name: str, protocol: str, rf_id: str, fields: list[str], stale_after: str) -> dict:
+def generate(prefix: str, name: str, protocol: str, rf_id: str, fields: list[str], stale_after: str, channel: int | None = None) -> dict:
     """Return a package with exact NAME+ID filtering and per-field expiry."""
     if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', prefix):
         raise ValueError('prefix must be a valid C++/ESPHome ID, e.g. kert_rf')
@@ -45,6 +45,8 @@ def generate(prefix: str, name: str, protocol: str, rf_id: str, fields: list[str
     unknown = set(fields) - (set(FIELDS)|set(BINARY)|set(TEXT))
     if unknown: raise ValueError('Unknown fields: '+', '.join(sorted(unknown)))
     if not fields: raise ValueError('Select at least one field')
+    if channel is not None and (not isinstance(channel, int) or isinstance(channel, bool) or not 0 <= channel <= 255):
+        raise ValueError('channel must be 0..255')
     cpp=lambda value:json.dumps(value,ensure_ascii=True)
     output={'json':None}
     lines=['const bool valid = json::parse_json(message, [&](JsonObject root) -> bool {',
@@ -52,6 +54,9 @@ def generate(prefix: str, name: str, protocol: str, rf_id: str, fields: list[str
            '  const std::string protocol = root["NAME"] | "";',
            '  const std::string device = root["ID"] | "";',
            f'  if (protocol != {cpp(protocol)} || device != {cpp(rf_id)}) return true;']
+    if channel is not None:
+        lines += ['  const auto channel = data::number(root, data::CHAN);',
+                  f'  if (!channel.valid || channel.value != {channel}.0f) return true;']
     for key in dict.fromkeys(fields):
         ident=prefix+'_'+key.lower()
         if key in FIELDS:
@@ -61,7 +66,7 @@ def generate(prefix: str, name: str, protocol: str, rf_id: str, fields: list[str
                  'update_interval':'never','filters':[{'timeout':stale_after}]}
             if f['unit']: ent['unit_of_measurement']=f['unit']
             if f['device_class']:ent['device_class']=f['device_class']
-            if key in ['TEMP','HUM','WINSP','AWINSP','WINDIR','WINCHL','WINTMP','WATT']:
+            if key in ['TEMP','HUM','WINSP','AWINSP','WINDIR','WINCHL','WINTMP','WATT','WINDIR_DEG']:
                 ent['state_class']='measurement'
             if 'nyers' in f['label']:ent['entity_category']='diagnostic'
             output.setdefault('sensor',[]).append(ent)
@@ -93,13 +98,14 @@ def main() -> None:
     p.add_argument('--name',required=True)
     p.add_argument('--protocol',required=True,help='Exact decoded NAME value')
     p.add_argument('--rf-id',required=True,help='Exact decoded ID, including leading zeros')
+    p.add_argument('--channel',type=int,default=None,help='Optional exact decoded CHAN; do not assume 0/1 based numbering')
     p.add_argument('--fields',default='TEMP,HUM,BAT',help='Comma-separated field names, or ALL')
     p.add_argument('--stale-after',default='60min')
     p.add_argument('--output',type=Path,required=True)
     args=p.parse_args()
     keys=list(FIELDS)+list(BINARY)+list(TEXT) if args.fields.upper()=='ALL' else [s.strip().upper() for s in args.fields.split(',') if s.strip()]
     try:
-        content=generate(args.prefix,args.name,args.protocol,args.rf_id,keys,args.stale_after)
+        content=generate(args.prefix,args.name,args.protocol,args.rf_id,keys,args.stale_after,args.channel)
         args.output.parent.mkdir(parents=True,exist_ok=True)
         if args.output.exists():raise ValueError('Output already exists; choose a new name or back it up first')
         header=('# Per-device RFLink field package, generated for an EXPLICIT NAME + ID.\n'
@@ -109,6 +115,6 @@ def main() -> None:
                 '# Text fields remain last-known; numeric/binary expiry is independent.\n\n')
         args.output.write_text(header+yaml.dump(content,Dumper=Dumper,allow_unicode=True,sort_keys=False,width=100),encoding='utf-8')
     except (ValueError,OSError) as e:p.error(str(e))
-    print(f'Created {args.output}; include this as an additional package after v0.1.3.')
+    print(f'Created {args.output}; include this as an additional package alongside the data-only package (v0.1.7 fields supported).')
 
 if __name__=='__main__': main()

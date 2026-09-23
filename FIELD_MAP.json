@@ -298,5 +298,29 @@
     "device_class": null,
     "decimals": 0,
     "icon": "mdi:sine-wave"
+  },
+  {
+    "key": "CHAN",
+    "base": 10,
+    "max_raw": 255,
+    "kind": "plain",
+    "scale": 1,
+    "label": "RF csatorna",
+    "unit": null,
+    "device_class": null,
+    "decimals": 0,
+    "icon": "mdi:numeric"
+  },
+  {
+    "key": "WINDIR_DEG",
+    "base": 10,
+    "max_raw": 359,
+    "kind": "plain",
+    "scale": 1,
+    "label": "szélirány fokban",
+    "unit": "°",
+    "device_class": null,
+    "decimals": 0,
+    "icon": "mdi:compass"
   }
 ]

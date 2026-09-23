@@ -1,0 +1,162 @@
+--- RFLink/Plugins/Plugin_001.c
++++ RFLink/Extensions/overrides/Plugin_001.c
+@@ -1,3 +1,4 @@
++// v0.1.7 extended-profile adaptation. See RFLink/Extensions/SOURCES.json.
+ //#######################################################################################################
+ //##                    This Plugin is only for use with the RFLink software package                   ##
+ //##                          Plugin-01: Long Packet Translation and debugging                         ##
+@@ -547,7 +548,7 @@
+    {
+       for (int offset = 0; offset < 74; offset++)
+       {
+-         if (RawSignal.Pulses[offset + 74] > PULSE3300 && RawSignal.Pulses[offset + 74 * 2] > PULSE3300 && ((offset > 0 && RawSignal.Pulses[offset] > PULSE3300) || RawSignal.Pulses[offset + 74 * 3] > PULSE3300))
++         if (RawSignal.Pulses[offset + 74] > PULSE3300 && RawSignal.Pulses[offset + 74 * 2] > PULSE3300 && ((offset > 0 && RawSignal.Pulses[offset] > PULSE3300) || (offset + 74 * 3 <= RawSignal.Number && RawSignal.Pulses[offset + 74 * 3] > PULSE3300)))
+          {
+             for (i = 0; i < 74; i++)
+             {
+@@ -715,7 +716,7 @@
+          //if (RawSignal.Pulses[j]*RawSignal.Multiply > 2500) {  // input is going to fast skip to where new part is going to start
+          if (RawSignal.Pulses[j] > PULSE2500)
+          { // input is going to fast skip to where new part is going to start
+-            if (j + 26 > RAW_BUFFER_SIZE - 1)
++            if (j + 26 + 26 > RawSignal.Number)
+                break; // cant be the packet we look for
+             //if ( (RawSignal.Pulses[j+26]*RawSignal.Multiply > 2500) && (RawSignal.Pulses[j+26]*RawSignal.Multiply < 3000) && (RawSignal.Pulses[j+26+26]*RawSignal.Multiply > 2500) ) { // first long delay found, make sure we have another at the right position
+             if ((RawSignal.Pulses[j + 26] > PULSE2500) && (RawSignal.Pulses[j + 26] < PULSE3000) && (RawSignal.Pulses[j + 26 + 26] > PULSE2500))
+--- RFLink/Plugins/Plugin_037.c
++++ RFLink/Extensions/overrides/Plugin_037.c
+@@ -1,3 +1,4 @@
++// v0.1.7 extended-profile adaptation. See RFLink/Extensions/SOURCES.json.
+ //#######################################################################################################
+ //##                    This Plugin is only for use with the RFLink software package                   ##
+ //##                                      Plugin-037: AcuRite 986                                         ##
+@@ -126,11 +127,13 @@
+    crcc = crc8le(data, 4, 0x07, 0);
+    if (crcc != reverse8(bitstream2))
+    {
++#ifdef PLUGIN_037_DEBUG
+       Serial.println("ERROR: crc failed.");
+       Serial.print("crcc le: ");
+       Serial.println(crcc);
+       Serial.print("crc: ");
+       Serial.println(reverse8(bitstream2));
++#endif  // CRC rejection stays enabled; normal RF noise is not a serial error.
+       return false;
+    }
+    //==================================================================================
+@@ -144,7 +147,9 @@
+    {
+       temperature = data[0];
+    }
+-   temperature = ((temperature - 32) * 5 / 9 * 10);   // ACURITE sensors are in Farenheit
++   // Convert Fahrenheit to tenths C BEFORE division (symmetric nearest-tenth rounding).
++   const int temp_numerator = (temperature - 32) * 50;
++   temperature = (temp_numerator >= 0 ? temp_numerator + 4 : temp_numerator - 4) / 9;
+    // Serial.print("temperature: ");
+    // Serial.println(temperature);
+    if ( temperature < 0 ) 
+@@ -180,7 +185,7 @@
+    display_Header();
+    display_Name(PSTR("AcuRite 986"));
+    char c_ID[5];
+-   sprintf(c_ID, "%02x%02x", (rc & 0xFF), rc2);
++   snprintf(c_ID, sizeof(c_ID), "%02x%02x", static_cast<unsigned>(rc & 0xFF), static_cast<unsigned>(rc2));
+    display_IDc(c_ID);
+    display_TEMP(temperature);
+    display_BAT(battery);
+--- RFLink/Plugins/Plugin_072.c
++++ RFLink/Extensions/overrides/Plugin_072.c
+@@ -1,3 +1,4 @@
++// v0.1.7 extended-profile adaptation. See RFLink/Extensions/SOURCES.json.
+ //#######################################################################################################
+ //##                    This Plugin is only for use with the RFLink software package                   ##
+ //##                                 Plugin-072 Byron Wireless Doorbell                                ##
+@@ -29,7 +30,7 @@
+  * 20;31;DEBUG;Pulses=511;Pulses(uSec)=450,550,250,550,250,550,250,550,250,525,250,525,250,550,250,550,250,225,575,200,575,200,575,550,250,2825,250,550,250,550,250,550,250,550,250,550,250,550,250,525,250,525,250,200,575,225,575,200,575,550,250,2825,250,525,250,550,250,550,250,550,250,550,250,550,250,550,250,550,250,200,575,200,575,200,575,525,250,2825,250,550,250,550,250,525,250,550,250,550,250,550,250,550,250,550,250,200,575,200,575,200,575,525,250,2825,250,550,250,525,250,525,250,525,250,550,250,550,250,550,250,550,250,225,575,200,575,200,575,525,250,2825,250,550,250,525,250,525,250,525,250,525,250,550,250,550,250,550,250,200,575,200,575,225,575,550,250,2825,225,550,250,525,250,525,250,550,250,550,250,525,250,525,250,525,250,225,575,200,575,225,575,550,250,2850,250,550,250,550,250,550,250,525,250,525,250,525,250,550,250,550,250,225,575,200,575,225,575,550,250,2850,225,550,250,550,250,550,250,550,250,525,250,525,250,525,250,550,250,200,575,200,575,200,575,525,250,2825,250,550,250,550,250,550,250,550,250,550,250,550,250,525,250,525,250,200,575,200,575,200,575,550,250,2825,250,525,250,550,250,550,250,550,250,550,250,550,250,550,250,550,250,200,575,200,575,200,575,550,250,2825,250,550,250,525,250,525,250,525,250,550,250,550,250,550,250,550,250,200,575,200,575,200,575,525,250,2825,250,550,250,550,250,550,250,525,250,550,250,550,250,550,250,550,250,200,575,200,575,225,575,525,250,2825,250,550,250,550,250,525,250,525,250,550,250,550,250,525,250,525,250,200,575,225,575,225,575,550,250,2850,250,550,250,550,250,525,250,525,250,525,250,550,250,550,250,550,250,200,575,225,575,200,575,550,250,2850,250,550,250,550,250,550,250,550,250,525,250,525,250,550,250,550,250,225,575,225,575,200,575,550,250,2825,250,550,250,550,250,550,250,550,250,550,250,550,250,550,250,525,250,200,575,200,575,200,575,550,250,2825,250,525,250,550,250,550,250,550,250,550,250,550,250,550,250,525,250,200,575,200,575,200,575,550,250,2825,250,525,250,550,250,550,250,550,250,550,250,550,250,550,250,550,250,200,575,200,575,200,575,525,250,2825,250,550,250,550,250,525,250,525,250,525,250,550,250,550,250,550;
+  * 20;25;DEBUG;Pulses=26;Pulses(uSec)=250,550,250,550,250,550,250,550,250,550,250,550,250,525,250,525,250,200,575,225,575,200,575,550,250;
+  \*********************************************************************************************/
+-#define BYRON_PLUGIN_ID 072
++#define BYRON_PLUGIN_ID 72  // decimal marker set by Plugin_001, NOT octal 072
+ #define PLUGIN_DESC_072 "Byron SX"
+ 
+ #define BYRON_PULSECOUNT 26
+@@ -48,7 +49,7 @@
+       return false;
+    if (RawSignal.Pulses[0] != BYRON_PLUGIN_ID)
+       return false; // only accept plugin1 translated packets
+-   if (RawSignal.Pulses[1] * RAWSIGNAL_SAMPLE_RATE > 425)
++   if (RawSignal.Pulses[1] * RawSignal.Multiply > 425)
+       return false; // first pulse is start bit and must be short
+ 
+    unsigned long bitstream = 0L;
+@@ -58,21 +59,21 @@
+    for (byte x = 2; x < BYRON_PULSECOUNT; x += 2)
+    {
+       bitstream <<= 1; // Always shift
+-      if (RawSignal.Pulses[x] * RAWSIGNAL_SAMPLE_RATE < 350)
++      if (RawSignal.Pulses[x] * RawSignal.Multiply < 350)
+       { // 200-275 (150-350 is accepted)
+-         if (RawSignal.Pulses[x] * RAWSIGNAL_SAMPLE_RATE < 150)
++         if (RawSignal.Pulses[x] * RawSignal.Multiply < 150)
+             return false; // pulse too short
+-         if (RawSignal.Pulses[x + 1] * RAWSIGNAL_SAMPLE_RATE < 350)
++         if (RawSignal.Pulses[x + 1] * RawSignal.Multiply < 350)
+             return false; // bad manchester code
+          // bitstream |= 0x0;
+       }
+       else
+       { // 500-575 (450-650 is accepted)
+-         if (RawSignal.Pulses[x + 1] * RAWSIGNAL_SAMPLE_RATE > 450)
++         if (RawSignal.Pulses[x + 1] * RawSignal.Multiply > 450)
+             return false; // bad manchester code
+-         if (RawSignal.Pulses[x] * RAWSIGNAL_SAMPLE_RATE < 450)
++         if (RawSignal.Pulses[x] * RawSignal.Multiply < 450)
+             return false; // pulse too short
+-         if (RawSignal.Pulses[x] * RAWSIGNAL_SAMPLE_RATE > 650)
++         if (RawSignal.Pulses[x] * RawSignal.Multiply > 650)
+             return false; // pulse too long
+          bitstream |= 0x1;
+       }
+--- RFLink/Plugins/Plugin_083.c
++++ RFLink/Extensions/overrides/Plugin_083.c
+@@ -1,3 +1,4 @@
++// v0.1.7 extended-profile adaptation. See RFLink/Extensions/SOURCES.json.
+ //#######################################################################################################
+ //##                    This Plugin is only for use with the RFLink software package                   ##
+ //##                                     Plugin-083: Brel Motor                                            ##
+@@ -106,21 +107,21 @@
+                         +bbuffer[5];
+ 
+          int command = bbuffer[8]*0x10+bbuffer[9];
+-         char * commandstring;
++         const char * commandstring;
+ 
+          switch (command)
+          {
+          case DOOYA_UP_COMMAND:
+-            commandstring = PSTR("CMD=UP");
++            commandstring = PSTR("UP");
+             break;
+          case DOOYA_DOWN_COMMAND:
+-            commandstring = PSTR("CMD=DOWN");
++            commandstring = PSTR("DOWN");
+             break;
+          case DOOYA_STOP_COMMAND:
+-            commandstring = PSTR("CMD=STOP");
++            commandstring = PSTR("STOP");
+             break;
+          case DOOYA_SETUP_COMMAND:
+-            commandstring = PSTR("CMD=SETUP");
++            commandstring = PSTR("SETUP");
+             break;
+          default :
+             return false;
+@@ -130,7 +131,7 @@
+          display_Name(PSTR("BrelMotor"));
+          display_IDn(address, 6);
+          display_SWITCH(bbuffer[7]);
+-         display_Name(commandstring);
++         display_CMDc(commandstring);
+          display_Footer();
+       } 
+       else 
