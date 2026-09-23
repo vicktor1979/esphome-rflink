@@ -1,0 +1,70 @@
+# Kiegészítő csomag a már működő ESPHome–RFLink projekthez.
+# Nem önálló készülékkonfiguráció.
+# Csak NAME="Alecto V1" és ID="006C" üzenetek frissítik.
+# A PARAM változó csomagsorszám, ezért nem szűrünk rá.
+# TEMP: RFLink hexadecimális, előjelbites, tizedfokos formátum.
+# BAT: LOW = alacsony elem; OK = rendben. Nem százalékos töltöttség.
+# 60 perc az adott mező új értéke nélkül -> ismeretlen állapot.
+# Az entity_category: "" miatt nem diagnosztikai kategóriájúak.
+
+json:
+
+sensor:
+  - platform: template
+    id: alecto_006c_temp
+    name: "Alecto 006C hőmérséklet"
+    icon: mdi:thermometer
+    internal: false
+    entity_category: ""
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+    filters:
+      - timeout: 60min
+
+binary_sensor:
+  - platform: template
+    id: alecto_006c_bat
+    name: "Alecto 006C alacsony elem"
+    device_class: battery
+    internal: false
+    entity_category: ""
+    filters:
+      - timeout: 60min
+
+script:
+  - id: alecto_006c_process
+    mode: queued
+    max_runs: 5
+    parameters:
+      message: string
+    then:
+      - lambda: |-
+          const bool valid = json::parse_json(message, [&](JsonObject root) -> bool {
+            namespace data = esphome::rflink_data;
+            const std::string protocol = root["NAME"] | "";
+            const std::string device = root["ID"] | "";
+            if (protocol != "Alecto V1" || device != "006C") return true;
+
+            data::publish_number(
+                id(alecto_006c_temp), data::number(root, data::TEMP), false);
+
+            const std::string battery = root["BAT"] | "";
+            data::publish_binary(
+                id(alecto_006c_bat), data::binary_value(battery, "LOW", "OK"),
+                !root["BAT"].isNull(), false);
+            return true;
+          });
+          if (!valid)
+            ESP_LOGW("rflink.device", "Hibas JSON az Alecto 006C feldolgozasakor.");
+
+# Az on_message LISTA hozzáfűződik a fő YAML meglévő listájához.
+# Az eredeti rflink_api_process hívást NE töröld.
+rflink:
+  on_message:
+    - then:
+        - script.execute:
+            id: alecto_006c_process
+            message: !lambda return x;
