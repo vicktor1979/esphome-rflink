@@ -18,6 +18,7 @@ from esphome.core import TimePeriod
 AUTO_LOAD = ["remote_base"]
 MULTI_CONF = True
 CONF_CAPTURE_ENABLED = "capture_enabled"
+CONF_HIGH_FREQUENCY = "high_frequency"
 remote_receiver_ns = cg.esphome_ns.namespace("remote_receiver")
 ToleranceMode = cg.esphome_ns.namespace("remote_base").enum("ToleranceMode")
 TOLERANCE_MODE = {
@@ -63,6 +64,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_IDLE, default="10ms"): cv.All(
                 cv.positive_time_period_microseconds, cv.Range(max=TimePeriod(microseconds=4294967295))),
             cv.Optional(CONF_CAPTURE_ENABLED, default=True): cv.boolean,
+            cv.Optional(CONF_HIGH_FREQUENCY, default=True): cv.boolean,
         }).extend(cv.COMPONENT_SCHEMA)
     ), cv.only_on_esp8266, cv.only_with_arduino,
 )
@@ -79,4 +81,5 @@ async def to_code(config):
     cg.add(var.set_buffer_size(config[CONF_BUFFER_SIZE]))
     cg.add(var.set_filter_us(config[CONF_FILTER]))
     cg.add(var.set_idle_us(config[CONF_IDLE]))
+    cg.add(var.set_high_frequency(config[CONF_HIGH_FREQUENCY]))
     cg.add(var.set_capture_enabled(config[CONF_CAPTURE_ENABLED]))

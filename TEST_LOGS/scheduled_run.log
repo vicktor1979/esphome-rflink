@@ -1,0 +1,7 @@
+Scheduled capture: observations=20 messages=20 polls=55 edges=1000 overflow_reports=0
+PASS: 20 distinct EV1527 frames decoded by all-plugin engine with loop() serviced every simulated 16 ms
+PASS: changing high-frequency mode in mid-frame does not reset GPIO capture or lose synthetic frame
+PASS: consumer-stall overflow is reported and receiver recovers after capture gate reset
+LIMIT: no ESPHome scheduler, Wi-Fi, Xtensa compiler or hardware in this simulation.
+
+EXIT 0

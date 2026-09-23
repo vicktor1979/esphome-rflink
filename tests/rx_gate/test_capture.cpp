@@ -54,7 +54,7 @@ void pass(const char *s){std::cout<<"PASS: "<<s<<'\n';}
 
 int main(){
  rf_receiver.set_buffer_size(1000);rf_receiver.set_filter_us(100);rf_receiver.set_idle_us(5000);
- rf_receiver.set_capture_enabled(false);rf_bridge.setup();rf_bridge.set_decode_enabled(false);
+ rf_receiver.set_high_frequency(false);rf_receiver.set_capture_enabled(false);rf_bridge.setup();rf_bridge.set_decode_enabled(false);
  rf_receiver.register_listener(&rf_bridge);rf_receiver.register_listener(&counter);
  rf_bridge.add_on_message_callback([](std::string s){++messages;last_json=s;});
  rf_receiver.setup();
@@ -69,8 +69,8 @@ int main(){
  wifi_main.connected=true;at(6000);auto_step();assert(!rf_pin.attached());
  rf_probe_api_states=true;at(7000);auto_step();at(11999);auto_step();assert(!rf_pin.attached());
  at(12000);auto_step();assert(rf_pin.attached()&&rf_bridge.is_decode_enabled());
- assert(esphome::HighFrequencyLoopRequester::is_high_frequency());
- pass("actual YAML starts capture + decode only after state subscription and 5000 ms");
+ assert(!esphome::HighFrequencyLoopRequester::is_high_frequency());
+ pass("actual YAML starts IRQ capture + decode after 5000 ms, WITHOUT high-frequency loop request");
  const unsigned attaches=rf_pin.attachments;
  rf_receiver.set_capture_enabled(true);auto_step();assert(rf_pin.attachments==attaches);
  pass("repeated ON is idempotent; does not reinstall ISR");
@@ -92,8 +92,27 @@ int main(){
  rf_receiver.loop();assert(messages==messages_before);
  pass("resume drops paused/backlogged signal; no stale JSON replay");
  for(int i=0;i<1000;++i){rf_receiver.set_capture_enabled(false);rf_receiver.set_capture_enabled(true);}
- assert(array_allocations==allocations && esphome::HighFrequencyLoopRequester::requests==1);
- pass("1000 pause/resume cycles reuse buffer and balance fast-loop request");
+ assert(array_allocations==allocations && esphome::HighFrequencyLoopRequester::requests==0);
+ pass("1000 pause/resume cycles reuse buffer with no fast-loop request");
+ const unsigned unchanged_attaches=rf_pin.attachments;
+ const unsigned unchanged_detaches=rf_pin.detachments;
+ const uint32_t unchanged_edges=rf_receiver.get_edge_count();
+ for(int i=0;i<1000;++i) {
+   rf_receiver.set_high_frequency(true);
+   assert(rf_receiver.is_high_frequency_requested() && esphome::HighFrequencyLoopRequester::requests==1);
+   rf_receiver.set_high_frequency(true);
+   assert(esphome::HighFrequencyLoopRequester::requests==1);
+   rf_receiver.set_high_frequency(false);
+   assert(!rf_receiver.is_high_frequency_requested() && esphome::HighFrequencyLoopRequester::requests==0);
+ }
+ assert(rf_pin.attached()&&rf_pin.attachments==unchanged_attaches&&rf_pin.detachments==unchanged_detaches);
+ assert(unchanged_edges==rf_receiver.get_edge_count()&&array_allocations==allocations);
+ pass("1000 independent fast-loop toggles preserve IRQ attachment, counters and buffer allocation");
+ esphome::HighFrequencyLoopRequester other_request;
+ other_request.start();rf_receiver.set_high_frequency(true);assert(esphome::HighFrequencyLoopRequester::requests==2);
+ rf_receiver.set_high_frequency(false);assert(esphome::HighFrequencyLoopRequester::requests==1);
+ other_request.stop();assert(esphome::HighFrequencyLoopRequester::requests==0);
+ pass("disabling this receiver's fast-loop request leaves another component's request intact");
  ota_begin();assert(!rf_pin.attached()&&!rf_bridge.is_decode_enabled()&&rf_ota_active);
  advance(10000000);auto_step();assert(!rf_pin.attached());
  ota_error();auto_step();advance(4999000);auto_step();assert(!rf_pin.attached());
@@ -117,8 +136,8 @@ int main(){
  pass("shutdown leaves capture stopped");
  static esphome::InternalGPIOPin other_pin;
  static esphome::remote_receiver::RemoteReceiverComponent other(&other_pin);
- other.setup();assert(other_pin.attached());other.set_capture_enabled(false);
- pass("default capture-enabled behavior retained for configurations not opting out");
+ other.setup();assert(other_pin.attached()&&other.is_high_frequency_requested());other.set_capture_enabled(false);
+ pass("default capture-enabled AND high-frequency behavior retained for old YAML configurations");
  static esphome::InternalGPIOPin fail_pin;
  static esphome::remote_receiver::RemoteReceiverComponent failed(&fail_pin);
  allocation_fail=true;failed.setup();allocation_fail=false;

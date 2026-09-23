@@ -1,17 +1,19 @@
 PASS: capture_enabled=false prevents initial ISR installation, packets and fast-loop request
 PASS: actual YAML gate stays OFF without Wi-Fi/API state subscription
-PASS: actual YAML starts capture + decode only after state subscription and 5000 ms
+PASS: actual YAML starts IRQ capture + decode after 5000 ms, WITHOUT high-frequency loop request
 PASS: repeated ON is idempotent; does not reinstall ISR
 PASS: synthetic pin edges pass through actual receiver -> full 48-plugin engine -> EV1527 JSON
 PASS: OFF detaches only RX IRQ, stops fast loop, and produces no frames even with pin activity
 PASS: resume drops paused/backlogged signal; no stale JSON replay
-PASS: 1000 pause/resume cycles reuse buffer and balance fast-loop request
+PASS: 1000 pause/resume cycles reuse buffer with no fast-loop request
+PASS: 1000 independent fast-loop toggles preserve IRQ attachment, counters and buffer allocation
+PASS: disabling this receiver's fast-loop request leaves another component's request intact
 PASS: actual OTA lambdas stop capture and require fresh settle interval after error
 PASS: actual Wi-Fi disconnect lambda stops IRQ and resets readiness; reconnect resumes
 PASS: loss of API state subscription stops capture even when Wi-Fi is still connected
 PASS: pause/resume discards an in-progress partial frame
 PASS: shutdown leaves capture stopped
-PASS: default capture-enabled behavior retained for configurations not opting out
+PASS: default capture-enabled AND high-frequency behavior retained for old YAML configurations
 PASS: allocation failure never enables IRQ or capture
 PASS: invalid buffer cannot enable receiver
 LIMIT: host simulation; not ESP8266 target compilation or Wi-Fi/RF hardware validation.

@@ -32,9 +32,10 @@ def main():
     args=ap.parse_args();repo=args.repo.resolve();out=args.out.resolve();out.mkdir(parents=True,exist_ok=True)
     report=[]
     def passed(s):print('PASS: '+s,flush=True);report.append('PASS: '+s)
-    config=load(PATCH/'rflink-rxgate1-proba.yaml')
+    config=load(PATCH/'rflink-rxgate2-proba.yaml')
     assert config['external_components'][0]['components']==['rflink','remote_receiver']
     assert config['remote_receiver']['capture_enabled'] is False
+    assert config['remote_receiver']['high_frequency'] is False
     assert config['rflink']['rx_plugins']=='all'
     assert config['remote_receiver']['pin']['number']=='GPIO5'
     assert config['remote_receiver']['filter']=='100us' and config['remote_receiver']['idle']=='5ms'
@@ -82,6 +83,17 @@ def main():
         passed('Actual modified receiver + actual RFLink v0.1.5 bridge + all 48 RX plugins compile under host GNU C++20.')
         result=subprocess.run([str(t/'test_capture')],env=env,text=True,capture_output=True,timeout=30)
         (out/'capture_run.log').write_text(result.stdout+result.stderr+f'\nEXIT {result.returncode}\n')
+        if result.returncode:raise RuntimeError(result.stdout+result.stderr)
+        print(result.stdout,flush=True);report.extend(result.stdout.strip().splitlines())
+        # Reuse the actual receiver and engine; now drive GPIO edges while servicing
+        # receiver.loop() at a simulated 16 ms period, not only at frame boundaries.
+        cmd2=[str(HERE/'test_scheduled_capture.cpp') if item==str(HERE/'test_capture.cpp') else item for item in cmd]
+        cmd2[-1]=str(t/'test_scheduled_capture')
+        result=subprocess.run(cmd2,env=env,text=True,capture_output=True,timeout=90)
+        (out/'scheduled_compile.log').write_text('$ '+' '.join(cmd2)+'\n'+result.stdout+result.stderr+f'\nEXIT {result.returncode}\n')
+        if result.returncode:raise RuntimeError(result.stderr)
+        result=subprocess.run([str(t/'test_scheduled_capture')],env=env,text=True,capture_output=True,timeout=30)
+        (out/'scheduled_run.log').write_text(result.stdout+result.stderr+f'\nEXIT {result.returncode}\n')
         if result.returncode:raise RuntimeError(result.stdout+result.stderr)
         print(result.stdout,flush=True);report.extend(result.stdout.strip().splitlines())
     for rel,digest in hashes.items(): assert hashlib.sha256((repo/rel).read_bytes()).hexdigest()==digest,rel

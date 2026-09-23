@@ -1,14 +1,4 @@
-RFLink v0.1.5-rxgate1 – teszteredmények
-Dátum: 2026-09-23
-
-A futtatott tesztben a módosított vevő valódi C++ forrása, a változatlan
-v0.1.5 RFLink-híd és motor, valamint mind a 48 eredeti RX-plugin szerepel.
-A GPIO/IRQ, idő, ESPHome alapréteg és Wi-Fi/API állapotok helyettesítő tesztkódok.
-A ki-/bekapcsolást a mellékelt YAML-ból kiemelt tényleges lambdák végzik.
-A C++ teszt ASan + UBSan memóriadiagnosztikával futott.
-
-NEM teljes ESPHome/Xtensa firmware-fordítás vagy hardveres Wi-Fi/API/RF/OTA teszt.
-A Wi-Fi-hiba reprodukálása és megoldásának igazolása nem történt itt.
+RFLink rxgate2 – 2026-09-23, actual tests in this turn
 
 PASS: YAML parses with no duplicate keys/IDs; all RX, both existing packages and original RF timings retained.
 PASS: External receiver Python syntax compiles (NOT ESPHome schema validation).
@@ -17,26 +7,34 @@ PASS: All 48 RX plugins staged; generated plugin text byte-identical.
 PASS: Actual modified receiver + actual RFLink v0.1.5 bridge + all 48 RX plugins compile under host GNU C++20.
 PASS: capture_enabled=false prevents initial ISR installation, packets and fast-loop request
 PASS: actual YAML gate stays OFF without Wi-Fi/API state subscription
-PASS: actual YAML starts capture + decode only after state subscription and 5000 ms
+PASS: actual YAML starts IRQ capture + decode after 5000 ms, WITHOUT high-frequency loop request
 PASS: repeated ON is idempotent; does not reinstall ISR
 PASS: synthetic pin edges pass through actual receiver -> full 48-plugin engine -> EV1527 JSON
 PASS: OFF detaches only RX IRQ, stops fast loop, and produces no frames even with pin activity
 PASS: resume drops paused/backlogged signal; no stale JSON replay
-PASS: 1000 pause/resume cycles reuse buffer and balance fast-loop request
+PASS: 1000 pause/resume cycles reuse buffer with no fast-loop request
+PASS: 1000 independent fast-loop toggles preserve IRQ attachment, counters and buffer allocation
+PASS: disabling this receiver's fast-loop request leaves another component's request intact
 PASS: actual OTA lambdas stop capture and require fresh settle interval after error
 PASS: actual Wi-Fi disconnect lambda stops IRQ and resets readiness; reconnect resumes
 PASS: loss of API state subscription stops capture even when Wi-Fi is still connected
 PASS: pause/resume discards an in-progress partial frame
 PASS: shutdown leaves capture stopped
-PASS: default capture-enabled behavior retained for configurations not opting out
+PASS: default capture-enabled AND high-frequency behavior retained for old YAML configurations
 PASS: allocation failure never enables IRQ or capture
 PASS: invalid buffer cannot enable receiver
 LIMIT: host simulation; not ESP8266 target compilation or Wi-Fi/RF hardware validation.
+Scheduled capture: observations=20 messages=20 polls=55 edges=1000 overflow_reports=0
+PASS: 20 distinct EV1527 frames decoded by all-plugin engine with loop() serviced every simulated 16 ms
+PASS: changing high-frequency mode in mid-frame does not reset GPIO capture or lose synthetic frame
+PASS: consumer-stall overflow is reported and receiver recovers after capture gate reset
+LIMIT: no ESPHome scheduler, Wi-Fi, Xtensa compiler or hardware in this simulation.
 PASS: Original plugin contents unchanged after tests.
 LIMIT: GPIO/interrupts, ESPHome base classes, clocks and Wi-Fi/API flags are simulated test doubles.
 LIMIT: No actual ESPHome schema/code generation, Xtensa firmware build, OTA or Wi-Fi/RF hardware test.
 LIMIT: Passing host tests does NOT establish the cause of the Wi-Fi failure or hardware stability.
 KNOWN: Legacy plugin compiler warnings are retained, not suppressed.
 
-PASS: Direct byte comparison to original RFLink-5.5wj(2).zip: 54/54 unchanged.
-PASS: v0.1.5 components/rflink and both original YAML packages unchanged.
+EXTRA CHECK: direct byte comparison against uploaded RFLink-5.5wj(2).zip: all 54 Plugins/config/old files match.
+BASELINE: rxgate1 existing host regression tests rerun successfully before patch tests.
+ENVIRONMENT: no esphome installation or Xtensa compiler found; package download attempt failed on DNS resolution. No target build was executed.

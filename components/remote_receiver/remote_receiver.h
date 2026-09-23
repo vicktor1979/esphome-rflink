@@ -7,7 +7,7 @@
 #include <cinttypes>
 
 #ifndef USE_ESP8266
-#error "RFLink rxgate1 external remote_receiver supports ESP8266 only"
+#error "RFLink rxgate2 external remote_receiver supports ESP8266 only"
 #endif
 
 namespace esphome::remote_receiver {
@@ -42,6 +42,12 @@ class RemoteReceiverComponent final : public remote_base::RemoteReceiverBase, pu
   // Main-loop/setup context only. Before setup this stores the initial setting.
   void set_capture_enabled(bool enabled);
   bool is_capture_enabled() const { return this->capture_active_; }
+  // Main-loop/setup context only. Does not detach IRQ or reset pulse buffers.
+  void set_high_frequency(bool enabled);
+  bool is_high_frequency_requested() const { return this->capture_active_ && this->high_frequency_; }
+  uint32_t get_loop_calls() const { return this->loop_calls_; }
+  // Counts overflow flags observed by loop(), not lost edges or lost packets.
+  uint32_t get_overflow_reports() const { return this->overflow_reports_; }
   uint32_t get_edge_count() const { return this->store_.edge_count; }
 
  protected:
@@ -51,6 +57,9 @@ class RemoteReceiverComponent final : public remote_base::RemoteReceiverBase, pu
   uint32_t buffer_size_{1000};
   uint32_t filter_us_{10};
   uint32_t idle_us_{10000};
+  bool high_frequency_{true};  // backwards-compatible unless YAML opts out
+  uint32_t loop_calls_{0};
+  uint32_t overflow_reports_{0};
   bool capture_ready_{false};
   bool capture_requested_{true};
   bool capture_active_{false};

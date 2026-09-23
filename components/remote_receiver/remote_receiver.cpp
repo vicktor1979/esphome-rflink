@@ -2,6 +2,8 @@
 // Derived from ESPHome 2026.9.0 remote_receiver.cpp. Modified 2026-09-23.
 // The original ESP8266 pulse collection algorithm is retained. Additions:
 // pre-setup capture gate, pin-IRQ detach/reattach, ring reset, edge counter.
+// rxgate2: independently configurable high-frequency-loop request.
+// The ISR, filter, timestamping and frame reconstruction are unchanged.
 #include "remote_receiver.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/helpers.h"
@@ -95,7 +97,7 @@ void RemoteReceiverComponent::set_capture_enabled(bool enabled) {
     this->reset_capture_state_();
     this->capture_active_ = true;
     this->pin_->attach_interrupt(RemoteReceiverComponentStore::gpio_intr, &this->store_, gpio::INTERRUPT_ANY_EDGE);
-    this->high_freq_.start();
+    if (this->high_frequency_) this->high_freq_.start();
   } else {
     this->pin_->detach_interrupt();
     this->capture_active_ = false;
@@ -103,12 +105,29 @@ void RemoteReceiverComponent::set_capture_enabled(bool enabled) {
     this->reset_capture_state_();
   }
   ESP_LOGI(TAG, "RX gate: capture=%s; irq=%s; fast_loop=%s",
-           enabled ? "ON" : "OFF", enabled ? "ON" : "OFF", enabled ? "ON" : "OFF");
+           enabled ? "ON" : "OFF", enabled ? "ON" : "OFF",
+           this->is_high_frequency_requested() ? "ON" : "OFF");
+}
+
+void RemoteReceiverComponent::set_high_frequency(bool enabled) {
+  if (this->high_frequency_ == enabled) return;
+  this->high_frequency_ = enabled;
+  if (this->capture_active_ && enabled) {
+    this->high_freq_.start();
+  } else {
+    this->high_freq_.stop();
+  }
+  // No IRQ detach, buffer reset, pin-mode change or allocation here.
+  if (this->capture_ready_) {
+    ESP_LOGI(TAG, "RX scheduling: capture=%s; fast_loop=%s",
+             this->capture_active_ ? "ON" : "OFF", this->is_high_frequency_requested() ? "ON" : "OFF");
+  }
 }
 
 void RemoteReceiverComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "Remote Receiver rxgate1 (ESP8266 / based on 2026.9.0):");
+  ESP_LOGCONFIG(TAG, "Remote Receiver rxgate2 (ESP8266 / based on 2026.9.0):");
   ESP_LOGCONFIG(TAG, "  Capture enabled: %s", this->capture_active_ ? "YES" : "NO");
+  ESP_LOGCONFIG(TAG, "  High frequency configured: %s", this->high_frequency_ ? "YES" : "NO");
   ESP_LOGCONFIG(TAG, "  Buffer Size: %" PRIu32, this->buffer_size_);
   ESP_LOGCONFIG(TAG, "  Filter: %" PRIu32 " us; Idle: %" PRIu32 " us", this->filter_us_, this->idle_us_);
   LOG_PIN("  Pin: ", this->pin_);
@@ -116,8 +135,10 @@ void RemoteReceiverComponent::dump_config() {
 
 void RemoteReceiverComponent::loop() {
   if (!this->capture_active_ || this->is_failed()) return;
+  ++this->loop_calls_;
   auto &s = this->store_;
   if (s.overflow) {
+    ++this->overflow_reports_;
     ESP_LOGW(TAG, "Buffer overflow");
     s.overflow = false;
   }
