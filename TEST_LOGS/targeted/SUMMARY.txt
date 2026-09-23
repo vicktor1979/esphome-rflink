@@ -1,0 +1,14 @@
+PASS: 54 upstream plugin/config/old files match the original manifest.
+PASS: gesture YAML unique keys; separate 180/450/180 ms timing settings.
+PASS: 29 gesture scenarios (single/multi/hold/cancel/identity/rollover/safety).
+LEGACY: same synthetic holes 220/350/440 ms -> holds=4, releases=4
+NEW: same synthetic holes 220/350/440 ms -> holds=1, releases=1
+PASS: 34 holdfix scenarios; no RF/Wi-Fi hardware emulation.
+PASS: actual bridge, actual gesture YAML lambdas and 48 original RX plugins; guarded flash, ASan/UBSan.
+PASS: YAML + original decoder chain, synthetic 220/350/440 ms holes remain ONE hold.
+PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
+PASS: actual bridge, actual gesture YAML lambdas and 2 original RX plugins; guarded flash, ASan/UBSan.
+PASS: YAML + original decoder chain, synthetic 220/350/440 ms holes remain ONE hold.
+PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
+PASS: all 54 upstream files still unchanged after testing.
+LIMIT: host compiler/test doubles; no ESPHome generation, Xtensa firmware build, or physical RF/Wi-Fi/API/OTA test.

@@ -1,3 +1,4 @@
+# v0.1.5-holdfix1: tolerant held-release, unchanged short-click separation.
 # Add-on to rflink-ha-all-data.yaml, NOT a replacement.
 # Receives accepted EV1527 frames through a lightweight side channel; the
 # original RFLink JSON duplicate suppression and all sensor fields stay intact.
@@ -9,6 +10,10 @@ substitutions:
   rflink_gesture_2_button: "08"
   rflink_gesture_2_name: "Konyhai 08 gesztus"
   rflink_gesture_release_ms: "180"
+  # Longer grace ONLY after hold recognition. Not a raw-RF filter.
+  rflink_gesture_hold_release_ms: "450"
+  # No hold_repeat after this much silence, even inside the hold grace.
+  rflink_gesture_repeat_fresh_ms: "180"
   rflink_gesture_multi_ms: "350"
   rflink_gesture_hold_ms: "700"
   rflink_gesture_repeat_ms: "250"
@@ -86,6 +91,8 @@ esphome:
       - lambda: |-
           esphome::rflink_gestures::Timing t;
           t.release_ms = ${rflink_gesture_release_ms};
+          t.hold_release_ms = ${rflink_gesture_hold_release_ms};
+          t.repeat_fresh_ms = ${rflink_gesture_repeat_fresh_ms};
           t.multi_click_ms = ${rflink_gesture_multi_ms};
           t.hold_ms = ${rflink_gesture_hold_ms};
           t.repeat_ms = ${rflink_gesture_repeat_ms};
@@ -99,9 +106,11 @@ esphome:
               id(rf_gesture_pressed_1).publish_state(e.pressed);
             id(rf_gesture_event_1).trigger(e.type);
             if (${rflink_gesture_log_events}) {
-              ESP_LOGD("rflink.gesture", "EV1527 ${rflink_gesture_1_id}/${rflink_gesture_1_button} -> %s; frames=%lu; span_ms=%lu; max_gap_ms=%lu; clicks=%u",
+              ESP_LOGD("rflink.gesture", "EV1527 ${rflink_gesture_1_id}/${rflink_gesture_1_button} -> %s; frames=%lu; span_ms=%lu; max_gap_ms=%lu; clicks=%u; t_ms=%lu; silence_ms=%lu; gap_ms=%lu; bridged=%lu",
                   e.type, static_cast<unsigned long>(e.frames), static_cast<unsigned long>(e.span_ms),
-                  static_cast<unsigned long>(e.max_gap_ms), static_cast<unsigned>(e.clicks));
+                  static_cast<unsigned long>(e.max_gap_ms), static_cast<unsigned>(e.clicks),
+                  static_cast<unsigned long>(e.at_ms), static_cast<unsigned long>(e.silence_ms),
+                  static_cast<unsigned long>(e.gap_ms), static_cast<unsigned long>(e.bridged_gaps));
             }
           });
           const bool ok_2 = id(rf_gesture_2).configure_ev1527(
@@ -113,9 +122,11 @@ esphome:
               id(rf_gesture_pressed_2).publish_state(e.pressed);
             id(rf_gesture_event_2).trigger(e.type);
             if (${rflink_gesture_log_events}) {
-              ESP_LOGD("rflink.gesture", "EV1527 ${rflink_gesture_2_id}/${rflink_gesture_2_button} -> %s; frames=%lu; span_ms=%lu; max_gap_ms=%lu; clicks=%u",
+              ESP_LOGD("rflink.gesture", "EV1527 ${rflink_gesture_2_id}/${rflink_gesture_2_button} -> %s; frames=%lu; span_ms=%lu; max_gap_ms=%lu; clicks=%u; t_ms=%lu; silence_ms=%lu; gap_ms=%lu; bridged=%lu",
                   e.type, static_cast<unsigned long>(e.frames), static_cast<unsigned long>(e.span_ms),
-                  static_cast<unsigned long>(e.max_gap_ms), static_cast<unsigned>(e.clicks));
+                  static_cast<unsigned long>(e.max_gap_ms), static_cast<unsigned>(e.clicks),
+                  static_cast<unsigned long>(e.at_ms), static_cast<unsigned long>(e.silence_ms),
+                  static_cast<unsigned long>(e.gap_ms), static_cast<unsigned long>(e.bridged_gaps));
             }
           });
           id(rf_bridge).add_on_frame_callback([=](uint16_t plugin_id, uint32_t code) {
@@ -129,9 +140,10 @@ esphome:
               id(rf_gesture_2).cancel(millis());
             }
           });
-          ESP_LOGI("rflink.gesture", "v0.1.4; patterns=%u; release=%lu; multi=%lu; hold=%lu; repeat=%lu ms",
+          ESP_LOGI("rflink.gesture", "v0.1.5-holdfix1; patterns=%u; release=%lu; hold_release=%lu; fresh=%lu; multi=%lu; hold=%lu; repeat=%lu ms",
               static_cast<unsigned>(ok_1) + static_cast<unsigned>(ok_2),
-              static_cast<unsigned long>(t.release_ms), static_cast<unsigned long>(t.multi_click_ms),
+              static_cast<unsigned long>(t.release_ms), static_cast<unsigned long>(t.held_release_timeout()),
+              static_cast<unsigned long>(t.repeat_fresh_timeout()), static_cast<unsigned long>(t.multi_click_ms),
               static_cast<unsigned long>(t.hold_ms), static_cast<unsigned long>(t.repeat_ms));
 
 interval:

@@ -1,121 +1,215 @@
---- a/components/remote_receiver/__init__.py
-+++ b/components/remote_receiver/__init__.py
-@@ -18,6 +18,7 @@
- AUTO_LOAD = ["remote_base"]
- MULTI_CONF = True
- CONF_CAPTURE_ENABLED = "capture_enabled"
-+CONF_HIGH_FREQUENCY = "high_frequency"
- remote_receiver_ns = cg.esphome_ns.namespace("remote_receiver")
- ToleranceMode = cg.esphome_ns.namespace("remote_base").enum("ToleranceMode")
- TOLERANCE_MODE = {
-@@ -63,6 +64,7 @@
-             cv.Optional(CONF_IDLE, default="10ms"): cv.All(
-                 cv.positive_time_period_microseconds, cv.Range(max=TimePeriod(microseconds=4294967295))),
-             cv.Optional(CONF_CAPTURE_ENABLED, default=True): cv.boolean,
-+            cv.Optional(CONF_HIGH_FREQUENCY, default=True): cv.boolean,
-         }).extend(cv.COMPONENT_SCHEMA)
-     ), cv.only_on_esp8266, cv.only_with_arduino,
- )
-@@ -79,4 +81,5 @@
-     cg.add(var.set_buffer_size(config[CONF_BUFFER_SIZE]))
-     cg.add(var.set_filter_us(config[CONF_FILTER]))
-     cg.add(var.set_idle_us(config[CONF_IDLE]))
-+    cg.add(var.set_high_frequency(config[CONF_HIGH_FREQUENCY]))
-     cg.add(var.set_capture_enabled(config[CONF_CAPTURE_ENABLED]))
---- a/components/remote_receiver/remote_receiver.h
-+++ b/components/remote_receiver/remote_receiver.h
-@@ -7,7 +7,7 @@
- #include <cinttypes>
- 
- #ifndef USE_ESP8266
--#error "RFLink rxgate1 external remote_receiver supports ESP8266 only"
-+#error "RFLink rxgate2 external remote_receiver supports ESP8266 only"
- #endif
- 
- namespace esphome::remote_receiver {
-@@ -42,6 +42,12 @@
-   // Main-loop/setup context only. Before setup this stores the initial setting.
-   void set_capture_enabled(bool enabled);
-   bool is_capture_enabled() const { return this->capture_active_; }
-+  // Main-loop/setup context only. Does not detach IRQ or reset pulse buffers.
-+  void set_high_frequency(bool enabled);
-+  bool is_high_frequency_requested() const { return this->capture_active_ && this->high_frequency_; }
-+  uint32_t get_loop_calls() const { return this->loop_calls_; }
-+  // Counts overflow flags observed by loop(), not lost edges or lost packets.
-+  uint32_t get_overflow_reports() const { return this->overflow_reports_; }
-   uint32_t get_edge_count() const { return this->store_.edge_count; }
- 
-  protected:
-@@ -51,6 +57,9 @@
-   uint32_t buffer_size_{1000};
-   uint32_t filter_us_{10};
-   uint32_t idle_us_{10000};
-+  bool high_frequency_{true};  // backwards-compatible unless YAML opts out
-+  uint32_t loop_calls_{0};
-+  uint32_t overflow_reports_{0};
-   bool capture_ready_{false};
-   bool capture_requested_{true};
-   bool capture_active_{false};
---- a/components/remote_receiver/remote_receiver.cpp
-+++ b/components/remote_receiver/remote_receiver.cpp
-@@ -2,6 +2,8 @@
- // Derived from ESPHome 2026.9.0 remote_receiver.cpp. Modified 2026-09-23.
- // The original ESP8266 pulse collection algorithm is retained. Additions:
- // pre-setup capture gate, pin-IRQ detach/reattach, ring reset, edge counter.
-+// rxgate2: independently configurable high-frequency-loop request.
-+// The ISR, filter, timestamping and frame reconstruction are unchanged.
- #include "remote_receiver.h"
- #include "esphome/core/hal.h"
- #include "esphome/core/helpers.h"
-@@ -95,7 +97,7 @@
-     this->reset_capture_state_();
-     this->capture_active_ = true;
-     this->pin_->attach_interrupt(RemoteReceiverComponentStore::gpio_intr, &this->store_, gpio::INTERRUPT_ANY_EDGE);
--    this->high_freq_.start();
-+    if (this->high_frequency_) this->high_freq_.start();
-   } else {
-     this->pin_->detach_interrupt();
-     this->capture_active_ = false;
-@@ -103,12 +105,29 @@
-     this->reset_capture_state_();
+--- old/components/rflink/rflink_gestures.h
++++ new/components/rflink/rflink_gestures.h
+@@ -1,5 +1,6 @@
+ #pragma once
+-// RFLink v0.1.4: non-blocking gesture inference for a configured EV1527 code.
++// RFLink v0.1.5-holdfix1: distinct click/held-release timeouts, fresh-frame
++// repeats, and explicit gap diagnostics. No receiver or plugin changes.
+ // No plugin edits, raw waveform logging, JSON parsing or network access here.
+ // The transmitter must repeat a recognisable frame while held. No release bit
+ // exists in the uploaded Plugin_061 output; release is inferred from RF silence.
+@@ -16,12 +17,20 @@
+   uint32_t hold_ms{700};             // Span between REAL matching frames.
+   uint32_t repeat_ms{250};           // Generated hold_repeat event cadence.
+   uint32_t max_press_ms{30000};      // Cancel and require silence after a stuck key.
++  // Zero keeps the pre-holdfix API behavior for older packages/tests.
++  // The new YAML explicitly uses 450 ms for an ALREADY recognized hold.
++  uint32_t hold_release_ms{0};
++  uint32_t repeat_fresh_ms{0};
++  uint32_t held_release_timeout() const { return hold_release_ms ? hold_release_ms : release_ms; }
++  uint32_t repeat_fresh_timeout() const { return repeat_fresh_ms ? repeat_fresh_ms : release_ms; }
+   bool valid() const {
+     return release_ms >= 20 && release_ms <= 2000 &&
+            multi_click_ms >= 50 && multi_click_ms <= 3000 &&
+            hold_ms > release_ms && hold_ms <= 10000 &&
+            repeat_ms >= 100 && repeat_ms <= 5000 &&
+-           max_press_ms > hold_ms && max_press_ms <= 300000;
++           max_press_ms > hold_ms && max_press_ms <= 300000 &&
++           held_release_timeout() >= release_ms && held_release_timeout() <= 2000 &&
++           repeat_fresh_timeout() >= 20 && repeat_fresh_timeout() <= held_release_timeout();
    }
-   ESP_LOGI(TAG, "RX gate: capture=%s; irq=%s; fast_loop=%s",
--           enabled ? "ON" : "OFF", enabled ? "ON" : "OFF", enabled ? "ON" : "OFF");
-+           enabled ? "ON" : "OFF", enabled ? "ON" : "OFF",
-+           this->is_high_frequency_requested() ? "ON" : "OFF");
-+}
-+
-+void RemoteReceiverComponent::set_high_frequency(bool enabled) {
-+  if (this->high_frequency_ == enabled) return;
-+  this->high_frequency_ = enabled;
-+  if (this->capture_active_ && enabled) {
-+    this->high_freq_.start();
-+  } else {
-+    this->high_freq_.stop();
-+  }
-+  // No IRQ detach, buffer reset, pin-mode change or allocation here.
-+  if (this->capture_ready_) {
-+    ESP_LOGI(TAG, "RX scheduling: capture=%s; fast_loop=%s",
-+             this->capture_active_ ? "ON" : "OFF", this->is_high_frequency_requested() ? "ON" : "OFF");
-+  }
- }
+ };
  
- void RemoteReceiverComponent::dump_config() {
--  ESP_LOGCONFIG(TAG, "Remote Receiver rxgate1 (ESP8266 / based on 2026.9.0):");
-+  ESP_LOGCONFIG(TAG, "Remote Receiver rxgate2 (ESP8266 / based on 2026.9.0):");
-   ESP_LOGCONFIG(TAG, "  Capture enabled: %s", this->capture_active_ ? "YES" : "NO");
-+  ESP_LOGCONFIG(TAG, "  High frequency configured: %s", this->high_frequency_ ? "YES" : "NO");
-   ESP_LOGCONFIG(TAG, "  Buffer Size: %" PRIu32, this->buffer_size_);
-   ESP_LOGCONFIG(TAG, "  Filter: %" PRIu32 " us; Idle: %" PRIu32 " us", this->filter_us_, this->idle_us_);
-   LOG_PIN("  Pin: ", this->pin_);
-@@ -116,8 +135,10 @@
+@@ -32,6 +41,10 @@
+   uint32_t frames;
+   uint32_t span_ms;
+   uint32_t max_gap_ms;
++  uint32_t at_ms{0};          // State-machine clock, not wall-clock time.
++  uint32_t silence_ms{0};     // Age of the most recent accepted matching frame.
++  uint32_t gap_ms{0};         // Gap preceding the latest accepted matching frame.
++  uint32_t bridged_gaps{0};   // Held gaps >= release_ms that did not end the hold.
+ };
  
- void RemoteReceiverComponent::loop() {
-   if (!this->capture_active_ || this->is_failed()) return;
-+  ++this->loop_calls_;
-   auto &s = this->store_;
-   if (s.overflow) {
-+    ++this->overflow_reports_;
-     ESP_LOGW(TAG, "Buffer overflow");
-     s.overflow = false;
+ class Button {
+@@ -62,7 +75,8 @@
+     if (!this->configured_ || plugin_id != 61 || code != this->code_) return false;
+     // Evaluate an RF gap before overwriting last_seen_, even after a delayed loop.
+     this->tick(now);
+-    ++this->total_frames_;
++    this->last_gap_ = this->total_frames_ ? elapsed_(now, this->last_seen_) : 0;
++    if (this->total_frames_ != UINT32_MAX) ++this->total_frames_;
+     if (this->blocked_) {
+       this->last_seen_ = now;  // Continuously stuck transmitters cannot rearm.
+       return true;
+@@ -72,12 +86,15 @@
+       this->held_ = false;
+       this->first_seen_ = this->last_seen_ = now;
+       this->stroke_frames_ = 1;
+-      this->max_gap_ = 0;
++      this->max_gap_ = this->bridged_gaps_ = 0;
++      this->repeat_frame_mark_ = 0;
+       this->emit_("press", now, this->clicks_);
+       return true;
+     }
+     const uint32_t gap = elapsed_(now, this->last_seen_);
+     if (gap > this->max_gap_) this->max_gap_ = gap;
++    if (this->held_ && gap >= this->timing_.release_ms && this->bridged_gaps_ != UINT32_MAX)
++      ++this->bridged_gaps_;
+     this->last_seen_ = now;
+     if (this->stroke_frames_ != UINT32_MAX) ++this->stroke_frames_;
+     // A timer alone MUST NOT turn one isolated packet into a held key.
+@@ -87,6 +104,7 @@
+       this->held_ = true;
+       this->clicks_ = 0;  // A short-click-then-hold sequence does NOT emit a click.
+       this->last_repeat_ = now;
++      this->repeat_frame_mark_ = this->stroke_frames_;
+       this->emit_("hold", now, 0);
+     }
+     return true;
+@@ -95,13 +113,17 @@
+   void tick(uint32_t now) {
+     if (!this->configured_) return;
+     if (this->blocked_) {
+-      if (elapsed_(now, this->last_seen_) >= this->timing_.release_ms)
++      if (elapsed_(now, this->last_seen_) >= this->timing_.held_release_timeout())
+         this->blocked_ = false;
+       return;
+     }
+     if (this->pressed_) {
+-      // Silence takes priority. A late loop must not synthesize hold repeats.
+-      if (elapsed_(now, this->last_seen_) >= this->timing_.release_ms) {
++      // Keep short-click discrimination unchanged. ONLY after hold detection
++      // allow a longer silence window, without synthesizing repeats in that gap.
++      const uint32_t silence = elapsed_(now, this->last_seen_);
++      const uint32_t timeout = this->held_ ? this->timing_.held_release_timeout()
++                                          : this->timing_.release_ms;
++      if (silence >= timeout) {
+         this->end_stroke_(now);
+       } else if (elapsed_(now, this->first_seen_) >= this->timing_.max_press_ms) {
+         this->pressed_ = this->held_ = false;
+@@ -109,8 +131,11 @@
+         this->blocked_ = true;
+         this->emit_("cancel", now, 0);
+         return;
+-      } else if (this->held_ && elapsed_(now, this->last_repeat_) >= this->timing_.repeat_ms) {
++      } else if (this->held_ && silence < this->timing_.repeat_fresh_timeout() &&
++                 this->stroke_frames_ != this->repeat_frame_mark_ &&
++                 elapsed_(now, this->last_repeat_) >= this->timing_.repeat_ms) {
+         this->last_repeat_ = now;
++        this->repeat_frame_mark_ = this->stroke_frames_;
+         this->emit_("hold_repeat", now, 0);  // At most one, never catch-up bursts.
+       }
+     }
+@@ -166,27 +191,31 @@
+   void end_stroke_(uint32_t now) {
+     const bool was_held = this->held_;
+     this->pressed_ = this->held_ = false;
+-    this->released_at_ = this->last_seen_ + this->timing_.release_ms;
++    this->released_at_ = this->last_seen_ + (was_held ? this->timing_.held_release_timeout()
++                                                        : this->timing_.release_ms);
+     if (!was_held && this->clicks_ <= MAX_CLICKS) ++this->clicks_;
+     this->emit_("release", now, this->clicks_);
+     if (was_held) this->emit_("hold_release", now, 0);
    }
+-  void emit_(const char *type, uint32_t /*now*/, uint16_t clicks) {
++  void emit_(const char *type, uint32_t now, uint16_t clicks) {
+     if (this->callback_)
+       this->callback_(Event{type, this->pressed_, clicks, this->stroke_frames_,
+-                            elapsed_(this->last_seen_, this->first_seen_), this->max_gap_});
++                            elapsed_(this->last_seen_, this->first_seen_), this->max_gap_,
++                            now, elapsed_(now, this->last_seen_), this->last_gap_, this->bridged_gaps_});
+   }
+   void reset_() {
+     this->pressed_ = this->held_ = this->blocked_ = false;
+     this->clicks_ = 0;
+     this->first_seen_ = this->last_seen_ = this->last_repeat_ = this->released_at_ = 0;
+     this->stroke_frames_ = this->max_gap_ = this->total_frames_ = 0;
++    this->repeat_frame_mark_ = this->last_gap_ = this->bridged_gaps_ = 0;
+   }
+   Timing timing_{};
+   Callback callback_;
+   uint32_t code_{0};
+   uint32_t first_seen_{0}, last_seen_{0}, last_repeat_{0}, released_at_{0};
+   uint32_t stroke_frames_{0}, max_gap_{0}, total_frames_{0};
++  uint32_t repeat_frame_mark_{0}, last_gap_{0}, bridged_gaps_{0};
+   uint16_t clicks_{0};
+   bool configured_{false}, pressed_{false}, held_{false}, blocked_{false};
+ };
+--- old/packages/rflink-ha-gestures.yaml
++++ new/packages/rflink-ha-gestures.yaml
+@@ -1,3 +1,4 @@
++# v0.1.5-holdfix1: tolerant held-release, unchanged short-click separation.
+ # Add-on to rflink-ha-all-data.yaml, NOT a replacement.
+ # Receives accepted EV1527 frames through a lightweight side channel; the
+ # original RFLink JSON duplicate suppression and all sensor fields stay intact.
+@@ -9,6 +10,10 @@
+   rflink_gesture_2_button: "08"
+   rflink_gesture_2_name: "Konyhai 08 gesztus"
+   rflink_gesture_release_ms: "180"
++  # Longer grace ONLY after hold recognition. Not a raw-RF filter.
++  rflink_gesture_hold_release_ms: "450"
++  # No hold_repeat after this much silence, even inside the hold grace.
++  rflink_gesture_repeat_fresh_ms: "180"
+   rflink_gesture_multi_ms: "350"
+   rflink_gesture_hold_ms: "700"
+   rflink_gesture_repeat_ms: "250"
+@@ -86,6 +91,8 @@
+       - lambda: |-
+           esphome::rflink_gestures::Timing t;
+           t.release_ms = ${rflink_gesture_release_ms};
++          t.hold_release_ms = ${rflink_gesture_hold_release_ms};
++          t.repeat_fresh_ms = ${rflink_gesture_repeat_fresh_ms};
+           t.multi_click_ms = ${rflink_gesture_multi_ms};
+           t.hold_ms = ${rflink_gesture_hold_ms};
+           t.repeat_ms = ${rflink_gesture_repeat_ms};
+@@ -99,9 +106,11 @@
+               id(rf_gesture_pressed_1).publish_state(e.pressed);
+             id(rf_gesture_event_1).trigger(e.type);
+             if (${rflink_gesture_log_events}) {
+-              ESP_LOGD("rflink.gesture", "EV1527 ${rflink_gesture_1_id}/${rflink_gesture_1_button} -> %s; frames=%lu; span_ms=%lu; max_gap_ms=%lu; clicks=%u",
++              ESP_LOGD("rflink.gesture", "EV1527 ${rflink_gesture_1_id}/${rflink_gesture_1_button} -> %s; frames=%lu; span_ms=%lu; max_gap_ms=%lu; clicks=%u; t_ms=%lu; silence_ms=%lu; gap_ms=%lu; bridged=%lu",
+                   e.type, static_cast<unsigned long>(e.frames), static_cast<unsigned long>(e.span_ms),
+-                  static_cast<unsigned long>(e.max_gap_ms), static_cast<unsigned>(e.clicks));
++                  static_cast<unsigned long>(e.max_gap_ms), static_cast<unsigned>(e.clicks),
++                  static_cast<unsigned long>(e.at_ms), static_cast<unsigned long>(e.silence_ms),
++                  static_cast<unsigned long>(e.gap_ms), static_cast<unsigned long>(e.bridged_gaps));
+             }
+           });
+           const bool ok_2 = id(rf_gesture_2).configure_ev1527(
+@@ -113,9 +122,11 @@
+               id(rf_gesture_pressed_2).publish_state(e.pressed);
+             id(rf_gesture_event_2).trigger(e.type);
+             if (${rflink_gesture_log_events}) {
+-              ESP_LOGD("rflink.gesture", "EV1527 ${rflink_gesture_2_id}/${rflink_gesture_2_button} -> %s; frames=%lu; span_ms=%lu; max_gap_ms=%lu; clicks=%u",
++              ESP_LOGD("rflink.gesture", "EV1527 ${rflink_gesture_2_id}/${rflink_gesture_2_button} -> %s; frames=%lu; span_ms=%lu; max_gap_ms=%lu; clicks=%u; t_ms=%lu; silence_ms=%lu; gap_ms=%lu; bridged=%lu",
+                   e.type, static_cast<unsigned long>(e.frames), static_cast<unsigned long>(e.span_ms),
+-                  static_cast<unsigned long>(e.max_gap_ms), static_cast<unsigned>(e.clicks));
++                  static_cast<unsigned long>(e.max_gap_ms), static_cast<unsigned>(e.clicks),
++                  static_cast<unsigned long>(e.at_ms), static_cast<unsigned long>(e.silence_ms),
++                  static_cast<unsigned long>(e.gap_ms), static_cast<unsigned long>(e.bridged_gaps));
+             }
+           });
+           id(rf_bridge).add_on_frame_callback([=](uint16_t plugin_id, uint32_t code) {
+@@ -129,9 +140,10 @@
+               id(rf_gesture_2).cancel(millis());
+             }
+           });
+-          ESP_LOGI("rflink.gesture", "v0.1.4; patterns=%u; release=%lu; multi=%lu; hold=%lu; repeat=%lu ms",
++          ESP_LOGI("rflink.gesture", "v0.1.5-holdfix1; patterns=%u; release=%lu; hold_release=%lu; fresh=%lu; multi=%lu; hold=%lu; repeat=%lu ms",
+               static_cast<unsigned>(ok_1) + static_cast<unsigned>(ok_2),
+-              static_cast<unsigned long>(t.release_ms), static_cast<unsigned long>(t.multi_click_ms),
++              static_cast<unsigned long>(t.release_ms), static_cast<unsigned long>(t.held_release_timeout()),
++              static_cast<unsigned long>(t.repeat_fresh_timeout()), static_cast<unsigned long>(t.multi_click_ms),
+               static_cast<unsigned long>(t.hold_ms), static_cast<unsigned long>(t.repeat_ms));
+ 
+ interval:

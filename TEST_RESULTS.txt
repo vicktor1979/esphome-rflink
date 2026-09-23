@@ -1,40 +1,46 @@
-RFLink rxgate2 – 2026-09-23, actual tests in this turn
+RFLink v0.1.5-holdfix1 — 2026-09-23
 
-PASS: YAML parses with no duplicate keys/IDs; all RX, both existing packages and original RF timings retained.
-PASS: External receiver Python syntax compiles (NOT ESPHome schema validation).
-PASS: 54 upstream RFLink plugin/config/old files match original manifest.
-PASS: All 48 RX plugins staged; generated plugin text byte-identical.
-PASS: Actual modified receiver + actual RFLink v0.1.5 bridge + all 48 RX plugins compile under host GNU C++20.
-PASS: capture_enabled=false prevents initial ISR installation, packets and fast-loop request
-PASS: actual YAML gate stays OFF without Wi-Fi/API state subscription
-PASS: actual YAML starts IRQ capture + decode after 5000 ms, WITHOUT high-frequency loop request
-PASS: repeated ON is idempotent; does not reinstall ISR
-PASS: synthetic pin edges pass through actual receiver -> full 48-plugin engine -> EV1527 JSON
-PASS: OFF detaches only RX IRQ, stops fast loop, and produces no frames even with pin activity
-PASS: resume drops paused/backlogged signal; no stale JSON replay
-PASS: 1000 pause/resume cycles reuse buffer with no fast-loop request
-PASS: 1000 independent fast-loop toggles preserve IRQ attachment, counters and buffer allocation
-PASS: disabling this receiver's fast-loop request leaves another component's request intact
-PASS: actual OTA lambdas stop capture and require fresh settle interval after error
-PASS: actual Wi-Fi disconnect lambda stops IRQ and resets readiness; reconnect resumes
-PASS: loss of API state subscription stops capture even when Wi-Fi is still connected
-PASS: pause/resume discards an in-progress partial frame
-PASS: shutdown leaves capture stopped
-PASS: default capture-enabled AND high-frequency behavior retained for old YAML configurations
-PASS: allocation failure never enables IRQ or capture
-PASS: invalid buffer cannot enable receiver
-LIMIT: host simulation; not ESP8266 target compilation or Wi-Fi/RF hardware validation.
-Scheduled capture: observations=20 messages=20 polls=55 edges=1000 overflow_reports=0
-PASS: 20 distinct EV1527 frames decoded by all-plugin engine with loop() serviced every simulated 16 ms
-PASS: changing high-frequency mode in mid-frame does not reset GPIO capture or lose synthetic frame
-PASS: consumer-stall overflow is reported and receiver recovers after capture gate reset
-LIMIT: no ESPHome scheduler, Wi-Fi, Xtensa compiler or hardware in this simulation.
-PASS: Original plugin contents unchanged after tests.
-LIMIT: GPIO/interrupts, ESPHome base classes, clocks and Wi-Fi/API flags are simulated test doubles.
-LIMIT: No actual ESPHome schema/code generation, Xtensa firmware build, OTA or Wi-Fi/RF hardware test.
-LIMIT: Passing host tests does NOT establish the cause of the Wi-Fi failure or hardware stability.
-KNOWN: Legacy plugin compiler warnings are retained, not suppressed.
+Scope: only rflink_gestures.h and rflink-ha-gestures.yaml changed.
+Input baseline: mounted v0.1.5 source package + rxgate2 receiver package.
+No live GitHub repository was changed or tested here.
 
-EXTRA CHECK: direct byte comparison against uploaded RFLink-5.5wj(2).zip: all 54 Plugins/config/old files match.
-BASELINE: rxgate1 existing host regression tests rerun successfully before patch tests.
-ENVIRONMENT: no esphome installation or Xtensa compiler found; package download attempt failed on DNS resolution. No target build was executed.
+Executed command:
+python tests/holdfix/run_tests.py --repo /mnt/data/rflink_work/test_repo --out TEST_LOGS/targeted
+
+PASS: 54 upstream plugin/config/old files match the original manifest.
+PASS: gesture YAML unique keys; separate 180/450/180 ms timing settings.
+PASS: 29 gesture scenarios (single/multi/hold/cancel/identity/rollover/safety).
+LEGACY: same synthetic holes 220/350/440 ms -> holds=4, releases=4
+NEW: same synthetic holes 220/350/440 ms -> holds=1, releases=1
+PASS: 34 holdfix scenarios; no RF/Wi-Fi hardware emulation.
+PASS: actual bridge, actual gesture YAML lambdas and 48 original RX plugins; guarded flash, ASan/UBSan.
+PASS: YAML + original decoder chain, synthetic 220/350/440 ms holes remain ONE hold.
+PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
+PASS: actual bridge, actual gesture YAML lambdas and 2 original RX plugins; guarded flash, ASan/UBSan.
+PASS: YAML + original decoder chain, synthetic 220/350/440 ms holes remain ONE hold.
+PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
+PASS: all 54 upstream files still unchanged after testing.
+LIMIT: host compiler/test doubles; no ESPHome generation, Xtensa firmware build, or physical RF/Wi-Fi/API/OTA test.
+
+Additional checks:
+PASS: direct byte comparison against the uploaded RFLink-5.5wj(2).zip: 54/54 plugin/config/old files match.
+PASS: all three rxgate2 receiver code files byte-identical to the preceding rxgate2 archive.
+PASS: RFLink engine, source-staging generator, component glue and all-data YAML byte-identical to v0.1.5.
+PASS: event identifiers, event types and exact RF identity matching retained.
+
+The OLD/LEGACY comparison in holdfix_test.cpp uses the old 180 ms timing in
+this header. It demonstrates the timeout mechanism, not a replay of the user's
+physical waveform. Synthetic test holes: 220, 350, 440 ms after hold recognition.
+The original 29 test cases ran with backward-compatible Timing defaults.
+The new 34 cases used held-release=450 ms and repeat freshness=180 ms.
+The real updated YAML lambdas also ran with the real engine and 48/2 original
+plugin selections, using simulated base classes/clocks and protected flash strings.
+
+NOT TESTED: ESPHome schema/code generation, ESP8266/Xtensa firmware link or size,
+real RF capture, missing-frame cause, Wi-Fi/API/OTA behavior, physical hold/release
+latency, or long-term operation. ESPHome, PlatformIO and target toolchain were not
+installed in this runtime. A successful host test is NOT a device firmware test.
+KNOWN: original legacy plugin compiler warnings remain (including Plugin_037).
+KNOWN LIMIT: long physical release/repress inside the 450 ms grace can be merged;
+pre-hold 180 ms gaps can still split; holes >=450 ms still release. These are tested
+and documented, not silently treated as successful hold recovery.
