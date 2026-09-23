@@ -1,0 +1,14 @@
+# Pattern from an earlier received JSON; NOT a verified independent physical remote.
+# Only 'received' is available: other RFLink plugins may suppress repeats internally.
+event:
+  - platform: rflink_remote
+    id: pelda_uzenet
+    name: "Példa RF parancs"
+    remote_id: rf_remotes
+    protocol: "Chuango"
+    rf_id: "5ac8d7"
+    button: "02"
+    command: "ON"
+    mode: message
+    event_types: [received]
+    message_cooldown: 250ms

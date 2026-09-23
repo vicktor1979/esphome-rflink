@@ -1,0 +1,574 @@
+# v0.1.6: data fields only. Remote events are configured in the device YAML.
+# Replace all-data with this package; NEVER include both at once.
+# RF events: immediate. Latest decoded packet diagnostic snapshot: at most once per second.
+# Missing fields are cleared. Do not use multi-device snapshots as permanent room sensors.
+# Per-device field packages: generate with tools/make_rf_device.py.
+# Full JSON parts are optional. The radio dump remains OFF.
+
+substitutions:
+  rflink_full_json_parts: 'false'
+  rflink_api_snapshot_interval: 1s
+json:
+globals:
+- id: rflink_api_packet_count
+  type: uint32_t
+  restore_value: false
+  initial_value: '0'
+- id: rflink_api_pending_json
+  type: std::string
+  restore_value: false
+  initial_value: '""'
+- id: rflink_api_snapshot_pending
+  type: bool
+  restore_value: false
+  initial_value: 'false'
+- id: rflink_api_have_packet
+  type: bool
+  restore_value: false
+  initial_value: 'false'
+- id: rflink_api_last_packet_ms
+  type: uint32_t
+  restore_value: false
+  initial_value: '0'
+- id: rflink_api_snapshot_max_us
+  type: uint32_t
+  restore_value: false
+  initial_value: '0'
+sensor:
+- platform: template
+  id: rflink_api_received_count
+  name: RF dekódolt csomagok
+  icon: mdi:counter
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  state_class: total_increasing
+  unit_of_measurement: db
+  update_interval: 5s
+  lambda: |-
+    return static_cast<float>(id(rflink_api_packet_count));
+- platform: template
+  id: rflink_api_set_level
+  name: RF utolsó fényerőszint
+  icon: mdi:brightness-6
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+- platform: template
+  id: rflink_api_temp
+  name: RF utolsó hőmérséklet
+  icon: mdi:thermometer
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 1
+  update_interval: never
+  unit_of_measurement: °C
+  device_class: temperature
+- platform: template
+  id: rflink_api_hum
+  name: RF utolsó páratartalom
+  icon: mdi:water-percent
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+  unit_of_measurement: '%'
+  device_class: humidity
+- platform: template
+  id: rflink_api_baro
+  name: RF utolsó légnyomás BARO nyers
+  icon: mdi:gauge
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+- platform: template
+  id: rflink_api_hstatus
+  name: RF utolsó komfortkód
+  icon: mdi:home-thermometer
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+- platform: template
+  id: rflink_api_bforecast
+  name: RF utolsó előrejelzéskód
+  icon: mdi:weather-partly-cloudy
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+- platform: template
+  id: rflink_api_uv
+  name: RF utolsó UV nyers
+  icon: mdi:weather-sunny-alert
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+- platform: template
+  id: rflink_api_lux
+  name: RF utolsó megvilágítás LUX nyers
+  icon: mdi:brightness-5
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+- platform: template
+  id: rflink_api_rain
+  name: RF utolsó csapadék
+  icon: mdi:weather-rainy
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 1
+  update_interval: never
+  unit_of_measurement: mm
+- platform: template
+  id: rflink_api_rainrate
+  name: RF utolsó RAINRATE érték
+  icon: mdi:weather-pouring
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 1
+  update_interval: never
+  unit_of_measurement: mm
+- platform: template
+  id: rflink_api_winsp
+  name: RF utolsó szélsebesség
+  icon: mdi:weather-windy
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 1
+  update_interval: never
+  unit_of_measurement: km/h
+- platform: template
+  id: rflink_api_awinsp
+  name: RF utolsó átlagos szélsebesség
+  icon: mdi:weather-windy
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 1
+  update_interval: never
+  unit_of_measurement: km/h
+- platform: template
+  id: rflink_api_wings
+  name: RF utolsó széllökés WINGS nyers
+  icon: mdi:weather-windy
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+- platform: template
+  id: rflink_api_windir
+  name: RF utolsó szélirány
+  icon: mdi:compass
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 1
+  update_interval: never
+  unit_of_measurement: °
+- platform: template
+  id: rflink_api_winchl
+  name: RF utolsó hőérzet
+  icon: mdi:thermometer-low
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 1
+  update_interval: never
+  unit_of_measurement: °C
+  device_class: temperature
+- platform: template
+  id: rflink_api_wintmp
+  name: RF utolsó szélmérő hőmérséklet
+  icon: mdi:thermometer
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 1
+  update_interval: never
+  unit_of_measurement: °C
+  device_class: temperature
+- platform: template
+  id: rflink_api_chime
+  name: RF utolsó csengődallam
+  icon: mdi:bell-ring
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+- platform: template
+  id: rflink_api_co2
+  name: RF utolsó CO2 nyers
+  icon: mdi:molecule-co2
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+- platform: template
+  id: rflink_api_sound
+  name: RF utolsó zajszint SOUND nyers
+  icon: mdi:volume-high
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+- platform: template
+  id: rflink_api_kwatt
+  name: RF utolsó KWATT nyers
+  icon: mdi:lightning-bolt
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+- platform: template
+  id: rflink_api_watt
+  name: RF utolsó teljesítmény
+  icon: mdi:flash
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+  unit_of_measurement: W
+  device_class: power
+- platform: template
+  id: rflink_api_current
+  name: RF utolsó áramerősség CURRENT nyers
+  icon: mdi:current-ac
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+- platform: template
+  id: rflink_api_dist
+  name: RF utolsó távolság DIST nyers
+  icon: mdi:ruler
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+- platform: template
+  id: rflink_api_meter
+  name: RF utolsó mérőállás METER nyers
+  icon: mdi:counter
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+- platform: template
+  id: rflink_api_volt
+  name: RF utolsó feszültség VOLT nyers
+  icon: mdi:sine-wave
+  entity_category: diagnostic
+  internal: false
+  accuracy_decimals: 0
+  update_interval: never
+- platform: template
+  id: rflink_api_packet_age
+  name: RF utolsó csomag kora
+  icon: mdi:clock-outline
+  entity_category: diagnostic
+  unit_of_measurement: s
+  accuracy_decimals: 0
+  update_interval: 10s
+  lambda: |-
+    if (!id(rflink_api_have_packet)) return NAN;
+    return static_cast<float>(static_cast<uint32_t>(millis() - id(rflink_api_last_packet_ms))) / 1000.0f;
+text_sensor:
+- platform: template
+  id: rflink_api_last_protocol
+  name: RF utolsó protokoll
+  icon: mdi:radio-tower
+  entity_category: diagnostic
+  internal: false
+  update_interval: never
+- platform: template
+  id: rflink_api_last_id
+  name: RF utolsó azonosító
+  icon: mdi:identifier
+  entity_category: diagnostic
+  internal: false
+  update_interval: never
+- platform: template
+  id: rflink_api_last_switch
+  name: RF utolsó gomb
+  icon: mdi:gesture-tap-button
+  entity_category: diagnostic
+  internal: false
+  update_interval: never
+- platform: template
+  id: rflink_api_last_command
+  name: RF utolsó parancs
+  icon: mdi:remote
+  entity_category: diagnostic
+  internal: false
+  update_interval: never
+- platform: template
+  id: rflink_api_last_message
+  name: RF utolsó üzenet
+  icon: mdi:code-json
+  entity_category: diagnostic
+  internal: false
+  update_interval: never
+- platform: template
+  id: rflink_api_param_text
+  name: RF utolsó csomagsorszám
+  icon: mdi:counter
+  entity_category: diagnostic
+  internal: false
+  update_interval: never
+- platform: template
+  id: rflink_api_battery_text
+  name: RF utolsó elemállapot
+  icon: mdi:battery
+  entity_category: diagnostic
+  internal: false
+  update_interval: never
+- platform: template
+  id: rflink_api_hstatus_text
+  name: RF utolsó komfortállapot
+  icon: mdi:home-thermometer
+  entity_category: diagnostic
+  internal: false
+  update_interval: never
+- platform: template
+  id: rflink_api_forecast_text
+  name: RF utolsó előrejelzés
+  icon: mdi:weather-partly-cloudy
+  entity_category: diagnostic
+  internal: false
+  update_interval: never
+- platform: template
+  id: rflink_api_rgbw_text
+  name: RF utolsó RGBW kód
+  icon: mdi:palette
+  entity_category: diagnostic
+  internal: false
+  update_interval: never
+- platform: template
+  id: rflink_api_invalid_fields_text
+  name: RF utolsó hibás adatmezők
+  icon: mdi:alert-circle-outline
+  entity_category: diagnostic
+  internal: false
+  update_interval: never
+- platform: template
+  id: rflink_api_json_part_1
+  name: RF teljes JSON 1
+  icon: mdi:code-json
+  entity_category: diagnostic
+  disabled_by_default: true
+  internal: false
+  update_interval: never
+- platform: template
+  id: rflink_api_json_part_2
+  name: RF teljes JSON 2
+  icon: mdi:code-json
+  entity_category: diagnostic
+  disabled_by_default: true
+  internal: false
+  update_interval: never
+- platform: template
+  id: rflink_api_json_part_3
+  name: RF teljes JSON 3
+  icon: mdi:code-json
+  entity_category: diagnostic
+  disabled_by_default: true
+  internal: false
+  update_interval: never
+- platform: template
+  id: rflink_api_json_part_4
+  name: RF teljes JSON 4
+  icon: mdi:code-json
+  entity_category: diagnostic
+  disabled_by_default: true
+  internal: false
+  update_interval: never
+- platform: template
+  id: rflink_api_json_part_5
+  name: RF teljes JSON 5
+  icon: mdi:code-json
+  entity_category: diagnostic
+  disabled_by_default: true
+  internal: false
+  update_interval: never
+script:
+- id: rflink_api_process
+  mode: queued
+  max_runs: 5
+  parameters:
+    message: string
+  then:
+  - lambda: |-
+      const bool valid = json::parse_json(message, [&](JsonObject root) -> bool {
+        const std::string protocol = root["NAME"] | "";
+        const std::string device = root["ID"] | "";
+        const std::string button = root["SWITCH"] | "";
+        const std::string command = root["CMD"] | "";
+        if (protocol.empty() || device.empty()) return false;
+
+        ++id(rflink_api_packet_count);
+        // Keep only the newest diagnostic snapshot. Remote events use their own callbacks.
+        id(rflink_api_pending_json) = message;
+        id(rflink_api_snapshot_pending) = true;
+        id(rflink_api_have_packet) = true;
+        id(rflink_api_last_packet_ms) = millis();
+
+        // Dedicated rflink_remote component handles configured events and learning.
+
+        return true;
+      });
+      if (!valid)
+        ESP_LOGW("rflink.api", "Hibas JSON vagy hianyzo NAME/ID; nincs API esemeny.");
+- id: rflink_api_snapshot
+  mode: single
+  parameters:
+    message: string
+  then:
+  - lambda: |
+      const uint32_t snapshot_start = micros();
+      const bool valid = json::parse_json(message, [&](JsonObject root) -> bool {
+        namespace data = esphome::rflink_data;
+        const std::string protocol = root["NAME"] | "";
+        const std::string device = root["ID"] | "";
+        const std::string button = root["SWITCH"] | "";
+        const std::string command = root["CMD"] | "";
+        if (protocol.empty() || device.empty()) return false;
+        data::publish_text(id(rflink_api_last_protocol), protocol);
+        data::publish_text(id(rflink_api_last_id), device);
+        data::publish_text(id(rflink_api_last_switch), button);
+        data::publish_text(id(rflink_api_last_command), command);
+        data::publish_text(id(rflink_api_param_text), root["PARAM"] | "");
+        const std::string preview = message.size() <= 250 ? message :
+            "RFLink JSON: " + std::to_string(message.size()) + " bajt; reszletek a mezokben / JSON 1-5.";
+        data::publish_text(id(rflink_api_last_message), preview);
+        std::string invalid_fields;
+        const auto field_SET_LEVEL = data::number(root, data::SET_LEVEL);
+        data::publish_number(id(rflink_api_set_level), field_SET_LEVEL, true);
+        if (field_SET_LEVEL.present && !field_SET_LEVEL.valid) invalid_fields += "SET_LEVEL ";
+        const auto field_TEMP = data::number(root, data::TEMP);
+        data::publish_number(id(rflink_api_temp), field_TEMP, true);
+        if (field_TEMP.present && !field_TEMP.valid) invalid_fields += "TEMP ";
+        const auto field_HUM = data::number(root, data::HUM);
+        data::publish_number(id(rflink_api_hum), field_HUM, true);
+        if (field_HUM.present && !field_HUM.valid) invalid_fields += "HUM ";
+        const auto field_BARO = data::number(root, data::BARO);
+        data::publish_number(id(rflink_api_baro), field_BARO, true);
+        if (field_BARO.present && !field_BARO.valid) invalid_fields += "BARO ";
+        const auto field_HSTATUS = data::number(root, data::HSTATUS);
+        data::publish_number(id(rflink_api_hstatus), field_HSTATUS, true);
+        if (field_HSTATUS.present && !field_HSTATUS.valid) invalid_fields += "HSTATUS ";
+        const auto field_BFORECAST = data::number(root, data::BFORECAST);
+        data::publish_number(id(rflink_api_bforecast), field_BFORECAST, true);
+        if (field_BFORECAST.present && !field_BFORECAST.valid) invalid_fields += "BFORECAST ";
+        const auto field_UV = data::number(root, data::UV);
+        data::publish_number(id(rflink_api_uv), field_UV, true);
+        if (field_UV.present && !field_UV.valid) invalid_fields += "UV ";
+        const auto field_LUX = data::number(root, data::LUX);
+        data::publish_number(id(rflink_api_lux), field_LUX, true);
+        if (field_LUX.present && !field_LUX.valid) invalid_fields += "LUX ";
+        const auto field_RAIN = data::number(root, data::RAIN);
+        data::publish_number(id(rflink_api_rain), field_RAIN, true);
+        if (field_RAIN.present && !field_RAIN.valid) invalid_fields += "RAIN ";
+        const auto field_RAINRATE = data::number(root, data::RAINRATE);
+        data::publish_number(id(rflink_api_rainrate), field_RAINRATE, true);
+        if (field_RAINRATE.present && !field_RAINRATE.valid) invalid_fields += "RAINRATE ";
+        const auto field_WINSP = data::number(root, data::WINSP);
+        data::publish_number(id(rflink_api_winsp), field_WINSP, true);
+        if (field_WINSP.present && !field_WINSP.valid) invalid_fields += "WINSP ";
+        const auto field_AWINSP = data::number(root, data::AWINSP);
+        data::publish_number(id(rflink_api_awinsp), field_AWINSP, true);
+        if (field_AWINSP.present && !field_AWINSP.valid) invalid_fields += "AWINSP ";
+        const auto field_WINGS = data::number(root, data::WINGS);
+        data::publish_number(id(rflink_api_wings), field_WINGS, true);
+        if (field_WINGS.present && !field_WINGS.valid) invalid_fields += "WINGS ";
+        const auto field_WINDIR = data::number(root, data::WINDIR);
+        data::publish_number(id(rflink_api_windir), field_WINDIR, true);
+        if (field_WINDIR.present && !field_WINDIR.valid) invalid_fields += "WINDIR ";
+        const auto field_WINCHL = data::number(root, data::WINCHL);
+        data::publish_number(id(rflink_api_winchl), field_WINCHL, true);
+        if (field_WINCHL.present && !field_WINCHL.valid) invalid_fields += "WINCHL ";
+        const auto field_WINTMP = data::number(root, data::WINTMP);
+        data::publish_number(id(rflink_api_wintmp), field_WINTMP, true);
+        if (field_WINTMP.present && !field_WINTMP.valid) invalid_fields += "WINTMP ";
+        const auto field_CHIME = data::number(root, data::CHIME);
+        data::publish_number(id(rflink_api_chime), field_CHIME, true);
+        if (field_CHIME.present && !field_CHIME.valid) invalid_fields += "CHIME ";
+        const auto field_CO2 = data::number(root, data::CO2);
+        data::publish_number(id(rflink_api_co2), field_CO2, true);
+        if (field_CO2.present && !field_CO2.valid) invalid_fields += "CO2 ";
+        const auto field_SOUND = data::number(root, data::SOUND);
+        data::publish_number(id(rflink_api_sound), field_SOUND, true);
+        if (field_SOUND.present && !field_SOUND.valid) invalid_fields += "SOUND ";
+        const auto field_KWATT = data::number(root, data::KWATT);
+        data::publish_number(id(rflink_api_kwatt), field_KWATT, true);
+        if (field_KWATT.present && !field_KWATT.valid) invalid_fields += "KWATT ";
+        const auto field_WATT = data::number(root, data::WATT);
+        data::publish_number(id(rflink_api_watt), field_WATT, true);
+        if (field_WATT.present && !field_WATT.valid) invalid_fields += "WATT ";
+        const auto field_CURRENT = data::number(root, data::CURRENT);
+        data::publish_number(id(rflink_api_current), field_CURRENT, true);
+        if (field_CURRENT.present && !field_CURRENT.valid) invalid_fields += "CURRENT ";
+        const auto field_DIST = data::number(root, data::DIST);
+        data::publish_number(id(rflink_api_dist), field_DIST, true);
+        if (field_DIST.present && !field_DIST.valid) invalid_fields += "DIST ";
+        const auto field_METER = data::number(root, data::METER);
+        data::publish_number(id(rflink_api_meter), field_METER, true);
+        if (field_METER.present && !field_METER.valid) invalid_fields += "METER ";
+        const auto field_VOLT = data::number(root, data::VOLT);
+        data::publish_number(id(rflink_api_volt), field_VOLT, true);
+        if (field_VOLT.present && !field_VOLT.valid) invalid_fields += "VOLT ";
+        const std::string battery = root["BAT"] | "";
+        const std::string pir = root["PIR"] | "";
+        const std::string smoke = root["SMOKEALERT"] | "";
+        data::publish_text(id(rflink_api_battery_text), battery.empty() ? "Nincs adat" : battery);
+        data::publish_text(id(rflink_api_hstatus_text), data::hstatus_label(field_HSTATUS));
+        data::publish_text(id(rflink_api_forecast_text), data::forecast_label(field_BFORECAST));
+        data::publish_text(id(rflink_api_rgbw_text), root["RGBW"] | "");
+        data::publish_binary(id(rflink_api_battery_low), data::binary_value(battery, "LOW", "OK"), !root["BAT"].isNull(), true);
+        data::publish_binary(id(rflink_api_pir), data::binary_value(pir, "ON", "OFF"), !root["PIR"].isNull(), true);
+        data::publish_binary(id(rflink_api_smoke), data::binary_value(smoke, "ON", "OFF"), !root["SMOKEALERT"].isNull(), true);
+        if (!root["BAT"].isNull() && data::binary_value(battery, "LOW", "OK") < 0) invalid_fields += "BAT ";
+        if (!root["PIR"].isNull() && data::binary_value(pir, "ON", "OFF") < 0) invalid_fields += "PIR ";
+        if (!root["SMOKEALERT"].isNull() && data::binary_value(smoke, "ON", "OFF") < 0) invalid_fields += "SMOKEALERT ";
+        data::publish_text(id(rflink_api_invalid_fields_text), invalid_fields);
+        // Off by default to avoid five extra state messages per RF snapshot.
+        // Enable rflink_full_json_parts only when a complete >250-byte JSON is needed.
+        if (${rflink_full_json_parts}) {
+          data::publish_text(id(rflink_api_json_part_1), data::json_part(message, 0));
+          data::publish_text(id(rflink_api_json_part_2), data::json_part(message, 1));
+          data::publish_text(id(rflink_api_json_part_3), data::json_part(message, 2));
+          data::publish_text(id(rflink_api_json_part_4), data::json_part(message, 3));
+          data::publish_text(id(rflink_api_json_part_5), data::json_part(message, 4));
+        }
+        return true;
+      });
+      if (!valid) ESP_LOGW("rflink.api", "Hibas diagnosztikai JSON.");
+      const uint32_t elapsed_us = static_cast<uint32_t>(micros() - snapshot_start);
+      if (elapsed_us > id(rflink_api_snapshot_max_us)) id(rflink_api_snapshot_max_us) = elapsed_us;
+binary_sensor:
+- platform: template
+  id: rflink_api_battery_low
+  name: RF utolsó alacsony elem
+  entity_category: diagnostic
+  device_class: battery
+  internal: false
+- platform: template
+  id: rflink_api_pir
+  name: RF utolsó mozgás
+  entity_category: diagnostic
+  device_class: motion
+  internal: false
+- platform: template
+  id: rflink_api_smoke
+  name: RF utolsó füstjelzés
+  entity_category: diagnostic
+  device_class: smoke
+  internal: false
+interval:
+- interval: ${rflink_api_snapshot_interval}
+  then:
+  - lambda: |-
+      if (id(rflink_api_snapshot_pending)) {
+        id(rflink_api_snapshot_pending) = false;
+        id(rflink_api_snapshot).execute(id(rflink_api_pending_json));
+      }

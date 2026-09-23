@@ -1,46 +1,62 @@
-RFLink v0.1.5-holdfix1 — 2026-09-23
+RFLink v0.1.6 – configurable event entities and learning diagnostics
+Date: 2026-09-23
 
-Scope: only rflink_gestures.h and rflink-ha-gestures.yaml changed.
-Input baseline: mounted v0.1.5 source package + rxgate2 receiver package.
-No live GitHub repository was changed or tested here.
-
-Executed command:
-python tests/holdfix/run_tests.py --repo /mnt/data/rflink_work/test_repo --out TEST_LOGS/targeted
-
-PASS: 54 upstream plugin/config/old files match the original manifest.
-PASS: gesture YAML unique keys; separate 180/450/180 ms timing settings.
+ACTUALLY EXECUTED HERE
+PASS: 54 original RFLink plugin/config/old files match the manifest.
+PASS: new Python modules compile as Python; this is NOT ESPHome schema execution.
+PASS: pure pattern/timing validators; normalization, default mode, 17 invalid cases rejected.
+PASS: YAML unique keys and event matches; no duplicate old packages; all RX and rxgate2 flags retained.
+PASS: all sensor definitions, data snapshot lambda, update interval, globals unchanged.
+PASS 85 runtime assertions; actual RFLink motor with 48 RX plugins; raw known keys + accepted-frame routing fixtures; stub ESPHome entities/JSON.
+PASS 85 runtime assertions; actual RFLink motor with 47 RX plugins; raw known keys + accepted-frame routing fixtures; stub ESPHome entities/JSON.
+PASS 83 runtime assertions; actual RFLink motor with 2 RX plugins; raw known keys + accepted-frame routing fixtures; stub ESPHome entities/JSON.
 PASS: 29 gesture scenarios (single/multi/hold/cancel/identity/rollover/safety).
 LEGACY: same synthetic holes 220/350/440 ms -> holds=4, releases=4
 NEW: same synthetic holes 220/350/440 ms -> holds=1, releases=1
 PASS: 34 holdfix scenarios; no RF/Wi-Fi hardware emulation.
-PASS: actual bridge, actual gesture YAML lambdas and 48 original RX plugins; guarded flash, ASan/UBSan.
-PASS: YAML + original decoder chain, synthetic 220/350/440 ms holes remain ONE hold.
-PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
-PASS: actual bridge, actual gesture YAML lambdas and 2 original RX plugins; guarded flash, ASan/UBSan.
-PASS: YAML + original decoder chain, synthetic 220/350/440 ms holes remain ONE hold.
-PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
-PASS: all 54 upstream files still unchanged after testing.
-LIMIT: host compiler/test doubles; no ESPHome generation, Xtensa firmware build, or physical RF/Wi-Fi/API/OTA test.
+PASS: upstream files still unchanged after all tests.
+LIMIT: host C++20 and test doubles. No real ESPHome validation/code generation, Xtensa firmware compilation, OTA, RF hardware or HA/API network test.
 
-Additional checks:
-PASS: direct byte comparison against the uploaded RFLink-5.5wj(2).zip: 54/54 plugin/config/old files match.
-PASS: all three rxgate2 receiver code files byte-identical to the preceding rxgate2 archive.
-PASS: RFLink engine, source-staging generator, component glue and all-data YAML byte-identical to v0.1.5.
-PASS: event identifiers, event types and exact RF identity matching retained.
+ADDITIONAL CHECKS
+- Direct binary comparison against the user's original RFLink-5.5wj(2).zip:
+  all 54 RFLink/Plugins files match, not just the inherited manifest.
+- This update does not contain replacements for components/rflink/ or
+  components/remote_receiver/: their working baseline is unchanged.
+- All original sensor, text_sensor, binary_sensor, globals and interval sections
+  of the all-data package remain unchanged in data-only. The snapshot conversion
+  script is byte-equivalent after YAML parsing. Only hard-coded remote events,
+  related substitutions and their dispatch branch are removed.
+- Data-only package and full main YAML parse without duplicate keys.
 
-The OLD/LEGACY comparison in holdfix_test.cpp uses the old 180 ms timing in
-this header. It demonstrates the timeout mechanism, not a replay of the user's
-physical waveform. Synthetic test holes: 220, 350, 440 ms after hold recognition.
-The original 29 test cases ran with backward-compatible Timing defaults.
-The new 34 cases used held-release=450 ms and repeat freshness=180 ms.
-The real updated YAML lambdas also ran with the real engine and 48/2 original
-plugin selections, using simulated base classes/clocks and protected flash strings.
+TEST SCOPE
+The runtime test compiles the REAL RFLink bridge/motor and 48, 47 or 2 original
+RX plugins together with the NEW C++ hub/event implementation.
+The known 085372/08 and 01fac2/08 keys use synthetic raw 300/900-us waveforms
+through the bridge. These exercise JSON dedup AND the accepted-frame callback.
+Additional arbitrary-key routing, learning-pool and time-rollover fixtures feed
+the documented accepted-frame interface directly. They do not prove that every
+arbitrary synthetic raw pattern is decoded as EV1527 by every plugin selection.
+The event/text/binary-sensor and JSON APIs are HOST TEST DOUBLES, not a running
+ESPHome/ArduinoJson/API stack. No RF hardware, router, OTA or HA is emulated.
+ASan/UBSan are enabled on the C++ runtime and state-machine tests.
 
-NOT TESTED: ESPHome schema/code generation, ESP8266/Xtensa firmware link or size,
-real RF capture, missing-frame cause, Wi-Fi/API/OTA behavior, physical hold/release
-latency, or long-term operation. ESPHome, PlatformIO and target toolchain were not
-installed in this runtime. A successful host test is NOT a device firmware test.
-KNOWN: original legacy plugin compiler warnings remain (including Plugin_037).
-KNOWN LIMIT: long physical release/repress inside the 450 ms grace can be merged;
-pre-hold 180 ms gaps can still split; holes >=450 ms still release. These are tested
-and documented, not silently treated as successful hold recovery.
+IMPORTANT EXISTING LIMITATION REPRODUCED
+With the complete plugin selection, the synthetic 085372/04 300/900-us fixture
+is decoded as Eurodomest before Plugin_061 is reached. With [61] it is EV1527.
+The new layer preserves this upstream selection and correctly does NOT fabricate
+an EV1527 gesture for the Eurodomest result; learning reports mode=message.
+This regression test is intentionally present; the decoder order is NOT changed.
+
+NOT EXECUTED HERE
+- Actual ESPHome schema validation/code generation.
+- Xtensa/ESP8266 firmware compilation/linking.
+- Installation on the user's device or RF/Wi-Fi/API/OTA hardware testing.
+- The supplied optional GitHub firmware workflow.
+ESPHome, PlatformIO and the target toolchain are absent. Direct source/package
+fetch attempts from the runtime failed with DNS resolution errors. The offline
+host tests above are therefore not a substitute for a real firmware build.
+
+INSTALLATION BASE
+Requires the existing v0.1.5 + rxgate2 + holdfix1 files in the repository.
+The RFLink motor log remains v0.1.5; the receiver remains rxgate2.
+Only rflink.remote logs v0.1.6.

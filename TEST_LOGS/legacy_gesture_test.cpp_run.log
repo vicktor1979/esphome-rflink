@@ -1,0 +1,4 @@
+$ /tmp/rflink-remote-tests-wwfci5qc/hold_unit
+PASS: 29 gesture scenarios (single/multi/hold/cancel/identity/rollover/safety).
+
+EXIT 0
