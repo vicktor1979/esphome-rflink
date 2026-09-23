@@ -1,14 +1,15 @@
-# Pattern from an earlier received JSON; NOT a verified independent physical remote.
-# Only 'received' is available: other RFLink plugins may suppress repeats internally.
+# Dokumentációs részlet, nem felismert vagy beállított valódi távirányító.
+# A négy jelminta-mező értékét a saját tanuló nézetedből másold át.
+# Message módban csak received van, nem feltételezünk gesztusfelismerést.
 event:
   - platform: rflink_remote
     id: pelda_uzenet
     name: "Példa RF parancs"
     remote_id: rf_remotes
-    protocol: "Chuango"
-    rf_id: "5ac8d7"
-    button: "02"
-    command: "ON"
+    protocol: "PROTOKOLL_NEVE"
+    rf_id: "RADIOS_AZONOSITO"
+    button: "GOMBKOD"
+    command: "PARANCS"
     mode: message
     event_types: [received]
     message_cooldown: 250ms

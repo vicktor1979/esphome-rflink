@@ -1,0 +1,64 @@
+# Reszlet a meglevo ESPHome konfiguraciohoz, nem onallo firmware-YAML.
+# A meglevo event: listaban a rf_gesture_event_2 bejegyzest csereld le erre.
+# Ne hozz letre masodik event: blokkot vagy masodik azonos taviranyitot.
+event:
+  - platform: rflink_remote
+    id: rf_gesture_event_2
+    name: "Konyhai 08 gesztus"
+    remote_id: rf_remotes
+
+    protocol: "EV1527"
+    rf_id: "01fac2"
+    button: "08"
+    command: "ON"
+    mode: gestures
+
+    event_types:
+      - single
+      - hold_repeat
+
+    pressed:
+      id: rf_gesture_pressed_2
+      name: "Konyhai 08 gesztus nyomva"
+
+    on_event:
+      then:
+        # Rovid nyomas: az eredeti +50, 255 folott 0 mukodes.
+        - if:
+            condition:
+              lambda: return event_type == "single";
+            then:
+              - homeassistant.action:
+                  action: light.turn_on
+                  data:
+                    entity_id: light.clt2_konyha_clt2_konyha
+                  data_template:
+                    brightness: >-
+                      {% set current = state_attr('light.clt2_konyha_clt2_konyha', 'brightness') %}
+                      {% if current is none %}
+                        {% set current = 0 %}
+                      {% endif %}
+                      {% set new_brightness = (current | float(0) + 50.0) | int %}
+                      {{ 0 if new_brightness > 255 else new_brightness }}
+
+        # Tartasismetles: +20, legfeljebb 255; 255 utan 0, majd ujra +20.
+        - if:
+            condition:
+              lambda: return event_type == "hold_repeat";
+            then:
+              - homeassistant.action:
+                  action: light.turn_on
+                  data:
+                    entity_id: light.clt2_konyha_clt2_konyha
+                    transition: "0"
+                  data_template:
+                    brightness: >-
+                      {% set current = state_attr('light.clt2_konyha_clt2_konyha', 'brightness') | int(0) %}
+                      {% if is_state('light.clt2_konyha_clt2_konyha', 'off') %}
+                        {% set current = 0 %}
+                      {% endif %}
+                      {% if current >= 255 %}
+                        0
+                      {% else %}
+                        {{ [current + 20, 255] | min }}
+                      {% endif %}
