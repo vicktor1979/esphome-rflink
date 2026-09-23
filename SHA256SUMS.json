@@ -1,0 +1,23 @@
+{
+  "README_HU.md": "268ab32f0cd43ee08310f747400d91d5feb580566fa9e16c371fb3a985273b14",
+  "rflink-rxgate1-proba.yaml": "aa579348109ef9c7f4c73c682c1d9edd46bad8eca18a841c57af9e52e7eaf711",
+  "TEST_RESULTS.txt": "06b91a331792f6af54c5ef5eca84361f0aaff78fda4f023eba6268e5eb03b6c9",
+  "TEST_LOGS/SUMMARY.txt": "4eedabc904c0825ad5b829b0a3f1ec207307f3ad61d86eacd876b3152a528b0d",
+  "TEST_LOGS/capture_compile.log": "2248e755c5d5ec8590e0b717540e627bd26eabd8c729f69a0336a930673d7b99",
+  "TEST_LOGS/capture_run.log": "813a5791d0d6165c708c239a716e4a6639faac3cee558ff70e10fe01c8ed2afa",
+  "components/remote_receiver/remote_receiver.cpp": "41e3efd1fe10a209f94cd4b10ef6653f73142f6309a2935ce774a35404b0318c",
+  "components/remote_receiver/LICENSE_GPLv3.txt": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+  "components/remote_receiver/remote_receiver.h": "d46cc25eb545d20c0febd8eade4564326bae2b23128733c4c2ce8ed7ca490c29",
+  "components/remote_receiver/LICENSE_MIT.txt": "e1e72462903e4dc4bee37535f7251b69dc19e52783ab8390b5c8fc195afa3727",
+  "components/remote_receiver/__init__.py": "2df8ede252376c6906f93490dd6799275e9a4f9d1a9e3b0def6b9bee5d370bc5",
+  "tests/rx_gate/test_capture.cpp": "50ad4ded93ac7c8838b26930137f5de4ad3295c9d6662b22606f334979512290",
+  "tests/rx_gate/run_tests.py": "f3238c63dbf90ea563bb43fc3db0fe1abef13b7511af3ecb44e19ebec9be9d5e",
+  "tests/rx_gate/stubs/Arduino.h": "59ae22fd021b6da5fea4be80947d6d754fe1fcbb66642101e34fc644cb51564d",
+  "tests/rx_gate/stubs/progmem_guard.h": "16b2fce0a2510ca7378e3657504f7c5f80f78116c24dc6e13d5717df750f2459",
+  "tests/rx_gate/stubs/esphome/core/automation.h": "e71362e89413ec43fbe974f67efa9ac14c84eab9e06239dc2ad7e2b0a6eae489",
+  "tests/rx_gate/stubs/esphome/core/log.h": "8b54c2255b8d1c89f01d1050e0b64bbc32021bce0c4622658f8eb1bdaa526178",
+  "tests/rx_gate/stubs/esphome/core/helpers.h": "4d862b645b309ebe49f4ea043cbdf4107b7bb64106af276b14d113066ec6fabc",
+  "tests/rx_gate/stubs/esphome/core/hal.h": "2c1c7159dc203fb727734c583a0938fa1e1da75d2fe17d9eedbbe10f6edcb099",
+  "tests/rx_gate/stubs/esphome/core/component.h": "7c849402198ec95c11a5dc35657b4e6d8deff7d70a0a74c834a4873f78a38582",
+  "tests/rx_gate/stubs/esphome/components/remote_base/remote_base.h": "99d2ff064e193e5007ac8669d3be5af06bd31698986e8273f4284ecf0dbcd793"
+}

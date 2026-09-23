@@ -1,68 +1,42 @@
-RFLink v0.1.5 – Mért eredmények, 2026-09-22
+RFLink v0.1.5-rxgate1 – teszteredmények
+Dátum: 2026-09-23
 
-KÖRNYEZET
-Linux x86_64; GNU g++ 14.2.0; Python 3.13.5.
--std=gnu++20, ESP8266 és USE_ESP8266 makrók, host Arduino/ESPHome helyettesítők.
-Szintaxispróbák: -fno-exceptions -fno-rtti -Wall.
-Futási próbák: ASan+UBSan; const PSTR + PROT_NONE védett flash-helyettesítő.
-A célgép utasításkészlete és Arduino SDK-ja NEM fut a tesztben.
+A futtatott tesztben a módosított vevő valódi C++ forrása, a változatlan
+v0.1.5 RFLink-híd és motor, valamint mind a 48 eredeti RX-plugin szerepel.
+A GPIO/IRQ, idő, ESPHome alapréteg és Wi-Fi/API állapotok helyettesítő tesztkódok.
+A ki-/bekapcsolást a mellékelt YAML-ból kiemelt tényleges lambdák végzik.
+A C++ teszt ASan + UBSan memóriadiagnosztikával futott.
 
-EREDMÉNY
-A tesztprogram kilépési kódja: 0.
-A javítás nélküli reprodukció elvárt kilépési kódja: 1; négy const char* -> char* hiba.
-A javított all/configured/4/2 összeállítások fordítása és futási próbái: 0.
-Az eredeti ZIP mind az 54 pluginmappabeli fájlja közvetlen byte-összehasonlítással is egyezik.
+NEM teljes ESPHome/Xtensa firmware-fordítás vagy hardveres Wi-Fi/API/RF/OTA teszt.
+A Wi-Fi-hiba reprodukálása és megoldásának igazolása nem történt itt.
 
-PASS: 54 original plugin/config/old-file SHA256 digests match the original manifest.
-PASS: all=48; configured=47; the difference is Plugin_083; explicit selection and missing-ID validation.
-PASS: YAML unique keys/IDs; all RX selection; receiver timings, API gate, field and gesture packages retained.
-PASS: Unpatched all-plugin build fails with real const PSTR typing (Plugin_083); regression reproduced.
-PASS: HOST C++20 syntax build: all, 48 RX plugins; byte-identical staged plugins; TX disabled.
-PASS: HOST C++20 syntax build: configured, 47 RX plugins; byte-identical staged plugins; TX disabled.
-PASS: HOST C++20 syntax build: ev1527, 2 RX plugins; byte-identical staged plugins; TX disabled.
-PASS: HOST C++20 syntax build: weather_ev1527, 4 RX plugins; byte-identical staged plugins; TX disabled.
-PASS: All 48 per-plugin selections compile individually (001 automatically present).
-PASS: Scoped PSTR fallback compiles; framework const PSTR type is restored afterwards.
-PASS: 29 gesture scenarios (single/multi/hold/cancel/identity/rollover/safety).
-PASS: Real bridge + gesture YAML lambda execution, guarded const flash, ASan/UBSan: ev1527. PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
-PASS: Real bridge + gesture YAML lambda execution, guarded const flash, ASan/UBSan: weather_ev1527. PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
-PASS: Real bridge + gesture YAML lambda execution, guarded const flash, ASan/UBSan: configured. PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
-PASS: Real bridge + gesture YAML lambda execution, guarded const flash, ASan/UBSan: all. PASS: actual YAML lambdas + real bridge + unmodified Plugin_061. Suppressed RF repeats drive hold/double/triple; IDs, cancel and resume isolated.
-PASS: Brel four command paths, flash reads and PSTR restoration: brel
-PASS: Brel four command paths, flash reads and PSTR restoration: all
-PASS: formatter RAM/PSTR strings, escaping, UTF-8, null/empty, size limit.
-PASS: Original 54 plugin/config/old files remain unchanged after every test.
-LIMIT: Host compiler and Arduino/ESPHome test doubles; NOT a full ESPHome/Xtensa firmware build.
-LIMIT: No real RF, Wi-Fi, API, OTA, flash size, target RAM or long-term stability test was possible.
-KNOWN: Original Plugin_037 printf format warning is not suppressed.
-KNOWN: Full legacy decoder sets can emit repeated EV1527 JSON; gesture frame logic passes independently.
-KNOWN: Original Plugin_083 emits duplicate NAME fields for its command; source semantics unchanged.
+PASS: YAML parses with no duplicate keys/IDs; all RX, both existing packages and original RF timings retained.
+PASS: External receiver Python syntax compiles (NOT ESPHome schema validation).
+PASS: 54 upstream RFLink plugin/config/old files match original manifest.
+PASS: All 48 RX plugins staged; generated plugin text byte-identical.
+PASS: Actual modified receiver + actual RFLink v0.1.5 bridge + all 48 RX plugins compile under host GNU C++20.
+PASS: capture_enabled=false prevents initial ISR installation, packets and fast-loop request
+PASS: actual YAML gate stays OFF without Wi-Fi/API state subscription
+PASS: actual YAML starts capture + decode only after state subscription and 5000 ms
+PASS: repeated ON is idempotent; does not reinstall ISR
+PASS: synthetic pin edges pass through actual receiver -> full 48-plugin engine -> EV1527 JSON
+PASS: OFF detaches only RX IRQ, stops fast loop, and produces no frames even with pin activity
+PASS: resume drops paused/backlogged signal; no stale JSON replay
+PASS: 1000 pause/resume cycles reuse buffer and balance fast-loop request
+PASS: actual OTA lambdas stop capture and require fresh settle interval after error
+PASS: actual Wi-Fi disconnect lambda stops IRQ and resets readiness; reconnect resumes
+PASS: loss of API state subscription stops capture even when Wi-Fi is still connected
+PASS: pause/resume discards an in-progress partial frame
+PASS: shutdown leaves capture stopped
+PASS: default capture-enabled behavior retained for configurations not opting out
+PASS: allocation failure never enables IRQ or capture
+PASS: invalid buffer cannot enable receiver
+LIMIT: host simulation; not ESP8266 target compilation or Wi-Fi/RF hardware validation.
+PASS: Original plugin contents unchanged after tests.
+LIMIT: GPIO/interrupts, ESPHome base classes, clocks and Wi-Fi/API flags are simulated test doubles.
+LIMIT: No actual ESPHome schema/code generation, Xtensa firmware build, OTA or Wi-Fi/RF hardware test.
+LIMIT: Passing host tests does NOT establish the cause of the Wi-Fi failure or hardware stability.
+KNOWN: Legacy plugin compiler warnings are retained, not suppressed.
 
-KIEGÉSZÍTŐ MEZŐFELDOLGOZÁSI TESZT
-A v0.1.3 mezőfeldolgozó tesztjét újrafuttattuk. A ténylegesen vizsgált
-rflink_fields.h és rflink-ha-all-data.yaml bájtról bájtra egyezik a v0.1.5 csomagéval.
-Kilépési kód: 0. 25 numerikus mező, metaadatok, BAT/PIR/SMOKE, hiányzó/hibás adatok,
-eszközönkénti elkülönítés, elavulás, UTF-8 JSON-részek, API-indítási kapu.
-Ez json-c alapú host JSON-helyettesítő, nem az ArduinoJson tényleges megvalósítása.
-
-CI BEMENET ÉS MUNKAFOLYAMAT
-A három generált .ci konfiguráció YAML-szintaxisa, relatív forrásútvonalai, nodemcuv2
-választása és titkosított API-beállítása ellenőrizve. A workflow YAML feldolgozható.
-A workflow célverziója ESPHome 2026.9.0. NINCS ELINDÍTOTT/LEFUTOTT GITHUB ACTIONS EREDMÉNY.
-
-NEM TÖRTÉNT
-Teljes ESPHome-validálás/kódgenerálás a valódi csomaggal, Xtensa firmware-fordítás/link,
-valódi flash/RAM méretmérés, ESP8266 hardverteszt, Wi-Fi/API/OTA-vizsgálat, összes protokoll
-rádiós tesztje. A célfordító nem állt rendelkezésre; az ESPHome-csomag letöltési kísérlete
-sikertelen (a környezetben elérhető csomagforrás nem adott ilyen telepíthető csomagot).
-A felhasználó új fordítási hibájának pontos sorát nem kaptuk meg.
-
-FORRÁSOK ÉS NAPLÓK
-TEST_LOGS/expected_unpatched_083_failure.log: tényleges negatív reprodukció.
-TEST_LOGS/compile_all.log: javított all forrásfordítás.
-TEST_LOGS/compile_individual_*.log: 48 külön pluginválasztás.
-TEST_LOGS/gesture_integration_run_all.log: teljes készlet + tényleges gesztuslambdák.
-TEST_LOGS/brel_run_all.log: négy eredeti Brel-parancság, a második NAME ismert marad.
-TEST_LOGS/formatter_run_all.log: védett PSTR-olvasás és JSON-formázás.
-TEST_LOGS/field-regression.log: külön mezőfeldolgozó regresszió.
-TEST_LOGS/esphome-install-attempt.log: sikertelen célkörnyezeti csomagbeszerzés.
+PASS: Direct byte comparison to original RFLink-5.5wj(2).zip: 54/54 unchanged.
+PASS: v0.1.5 components/rflink and both original YAML packages unchanged.

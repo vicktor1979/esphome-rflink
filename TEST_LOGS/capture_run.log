@@ -1,8 +1,3 @@
-PASS: YAML parses with no duplicate keys/IDs; all RX, both existing packages and original RF timings retained.
-PASS: External receiver Python syntax compiles (NOT ESPHome schema validation).
-PASS: 54 upstream RFLink plugin/config/old files match original manifest.
-PASS: All 48 RX plugins staged; generated plugin text byte-identical.
-PASS: Actual modified receiver + actual RFLink v0.1.5 bridge + all 48 RX plugins compile under host GNU C++20.
 PASS: capture_enabled=false prevents initial ISR installation, packets and fast-loop request
 PASS: actual YAML gate stays OFF without Wi-Fi/API state subscription
 PASS: actual YAML starts capture + decode only after state subscription and 5000 ms
@@ -20,8 +15,5 @@ PASS: default capture-enabled behavior retained for configurations not opting ou
 PASS: allocation failure never enables IRQ or capture
 PASS: invalid buffer cannot enable receiver
 LIMIT: host simulation; not ESP8266 target compilation or Wi-Fi/RF hardware validation.
-PASS: Original plugin contents unchanged after tests.
-LIMIT: GPIO/interrupts, ESPHome base classes, clocks and Wi-Fi/API flags are simulated test doubles.
-LIMIT: No actual ESPHome schema/code generation, Xtensa firmware build, OTA or Wi-Fi/RF hardware test.
-LIMIT: Passing host tests does NOT establish the cause of the Wi-Fi failure or hardware stability.
-KNOWN: Legacy plugin compiler warnings are retained, not suppressed.
+
+EXIT 0

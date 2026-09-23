@@ -1,120 +1,174 @@
-# RFLink v0.1.5 – minden RX-plugin + API + adatok + EV1527-gesztusok
+# RFLink v0.1.5-rxgate1 – az RF-impulzusgyűjtés szüneteltetése
 
-## Mit tartalmaz?
+## Cél és korlát
 
-Összegző frissítőcsomag a már meglévő `vicktor1979/esphome-rflink` repóhoz.
-A teljes, egymáshoz illő `components/rflink/` és két szükséges `packages/` fájl benne van.
-Nem kell előbb külön feltenni a v0.1.4-et. A meglévő `RFLink/` vendor mappa szükséges:
-a csomag azt NEM törli, NEM módosítja, és nem tartalmaz annak helyettesítésére új pluginokat.
+Ez a teljes v0.1.5 RFLink-rendszer kiegészítése, nem teljes projekt és nem új firmware-bináris.
+A Wi-Fi-hiba oka a rendelkezésre álló naplóból még nem bizonyított. A dekóderhívások
+száma nulla volt, de a remote_receiver közben tovább gyűjtötte az impulzusokat.
+Ez a változat a GPIO megszakításkezelőjét és a vevő nagyfrekvenciás főciklus-kérését
+is szünetelteti, nem csak az RFLink dekódolását.
 
-A készülék fő konfigurációja: `rflink-all-plugins-proba.yaml`.
-Alapértéke `rx_plugins: all`, azaz az eredeti forrásban lévő mind a 48 `.c` RX-része.
-A kötelező 001-es már része a 48-nak. `configured` az eredeti fejlécben engedélyezett
-47-et választja, a 083-as nincs közöttük. A `[61]` és `[34, 40, 61]` továbbra is használható.
-Az öt `.old` fájl nem külön, aktuális plugin. TX nincs megvalósítva.
+**Csak ESP8266 / Arduino céleszközre készült**, az ESPHome 2026.9.0 forrásának alapján.
+A konfiguráció elutasítja az ESP32-t és más célokat. Más ESPHome-verzióval nincs
+igazolt kompatibilitás. Ne frissíts egyidejűleg keretrendszer-verziót is ehhez a próbához.
 
-Megmarad: GPIO5, 100us szűrés, 5ms idle, 1000b puffer, titkosított API, az állapotokra
-feliratkozott API-kliens utáni 5 másodperces indítás, kapcsoló, OTA alatti szüneteltetés,
-a teljes RF-adatmezőcsomag és az EV1527 gesztusok. Nincs MQTT és nincs nyers dump.
-A gesztuskezelés továbbra is csak a két beállított EV1527-jelmintához van kötve.
-Az összes RX-plugin kiválasztása nem tesz automatikusan gesztusképessé más protokollokat.
+A host C++20 tesztek sikeresek. Nem történt teljes ESPHome-konfigurációvalidálás,
+kódgenerálás, Xtensa-firmware-fordítás, rádiós, Wi-Fi-, API- vagy OTA-hardverpróba.
+A tesztek nem bizonyítják, hogy ezzel a konkrét Wi-Fi-hiba megoldódik.
 
-## Reprodukált fordítási hiba és javítás
+## Telepítés a már meglévő v0.1.5 mellé
 
-Az eredeti `Plugin_083.c` Brel Motor / Dooya dekóderében `char *commandstring` kapja
-meg négy `PSTR(...)` értékét. Az ESP8266 PSTR-makrója `const char*` eredményt ad.
-Ez valódi típusütközés, nem pusztán printf-figyelmeztetés.
+1. Mentsd el a jelenlegi készülék-YAML-t és a repó működő állapotát.
+2. A GitHub-repóba másold az új könyvtárat azonos útvonalra:
 
-Az új, a const típust megőrző host-próbában a javítás nélküli all-választás 4 darab
-`invalid conversion from 'const char*' to 'char*'` hibával megállt. A korábbi tesztben
-használt PSTR-helyettesítő nem őrizte meg helyesen ezt a const típust, ezért ezt nem fogta meg.
-A régi teszt korlátját most kijavítottuk; a negatív reprodukció is a teszt része.
+   ```text
+   components/remote_receiver/__init__.py
+   components/remote_receiver/remote_receiver.h
+   components/remote_receiver/remote_receiver.cpp
+   components/remote_receiver/LICENSE_GPLv3.txt
+   components/remote_receiver/LICENSE_MIT.txt
+   ```
 
-A `stage_sources.py` kizárólag a 083-as beillesztése körül ad szűkített PSTR
-kompatibilitási burkolatot. Az ESP8266 PSTRN makrója, flash-elhelyezése és igazítása
-megmarad; a read-only szöveghez a régi plugin által várt pointertípus készül.
-A pointeren át nem ír a plugin, a szöveget továbbra is pgm_read_byte() olvassa.
-A framework eredeti PSTR makrója közvetlenül az include után visszaáll.
-Nem adtunk globális -fpermissive kapcsolót, nem némítottunk el általánosan hibákat.
+   A könyvtár legyen a meglévő `components/rflink` TESTVÉRE, ne azon belül.
+   A ZIP-et ne egyetlen fájlként töltsd fel. Ez innen még nincs a GitHubra publikálva.
+3. A meglévő `components/rflink/`, `packages/` és `RFLink/` tartalmát ne cseréld le.
+   Mind az 54 eredeti plugin/config/old fájl változatlan marad.
+4. A készülékhez használd a teljes `rflink-rxgate1-proba.yaml` fájlt. A saját
+   `secrets.yaml` és a kulcsok maradjanak helyben; ne kerüljenek GitHubra.
+5. Az új YAML az `external_components` bejegyzésben ezt kéri:
 
-Az eredeti Plugin_083.c, a többi plugin és még a generált .c.inc pluginmásolat is
-bájtról bájtra ugyanaz marad. A generált registry.inc az illesztőréteg része, nem eredeti plugin.
+   ```yaml
+   components: [rflink, remote_receiver]
+   ```
 
-## Telepítés
+   Ez tudatosan a beépített vevő helyett a repóban lévő változatot tölti be.
+6. Forrásfrissítés, konfigurációellenőrzés, Clean build files, majd fordítás.
+   A jelenleg Wi-Fi nélküli eszközre **USB-n telepíts**, és USB-n figyeld az indulást.
+   Ez a csomag nem javítja meg a még futó firmware-t a telepítés előtt.
 
-1. Mentsd el a jelenlegi működő YAML-t és a repó állapotát.
-2. A ZIP-ből töltsd a repóba azonos útvonalon a TELJES `components/rflink/` tartalmát
-   és a két `packages/` fájlt. A meglévő `RFLink/` könyvtár maradjon érintetlen.
-   Ne egyetlen ZIP-fájlként töltsd fel: a könyvtárszerkezetet kell megtartani.
-3. Az ESPHome készülék konfigurációjához használd a mellékelt
-   `rflink-all-plugins-proba.yaml` fájlt. A titkok nevei a korábbival egyeznek,
-   valós jelszót és kulcsot nem tartalmaz a csomag. A saját `secrets.yaml` marad helyben.
-4. GitHub-forrás frissítéshez a YAML-ban `refresh: 0s` van. Clean build files, majd
-   fordítás és feltöltés. Önmagában a GitHub-frissítés nem változtatja meg a készüléket.
-5. Indulási ellenőrzés:
+## Fontos: ez nem beépített ESPHome-opció
+
+A `capture_enabled: false` és a C++ `set_capture_enabled()`, `is_capture_enabled()`,
+`get_edge_count()` az itt mellékelt külső komponens új lehetőségei.
+A három komponensfájl telepítése nélkül az új YAML nem használható.
+Az ismeretlen `capture_enabled` opcióra vagy hiányzó `set_capture_enabled` tagra
+utaló hiba azt jelzi, hogy még a beépített/régi vevő töltődik be.
+
+## Mi marad meg?
+
+- `rx_plugins: all`: mind a 48 elérhető RX-plugin kiválasztása.
+- Mindkét csomag: `rflink-ha-all-data.yaml`, `rflink-ha-gestures.yaml`.
+- Hőmérséklet-, elem-, páratartalom- és további RF-adatmezők, EV1527-gesztusok.
+- GPIO5, `filter: 100us`, `idle: 5ms`, `buffer_size: 1000b`.
+- Titkosított API és a régi titoknevek.
+- Nincs MQTT és nincs nyers `dump`.
+- Az eredeti 083-as kompatibilitási javítás és a PROGMEM-javítás is megmarad.
+- TX továbbra sincs megvalósítva. A teljes készlet rádiós helyessége és hosszú távú
+  stabilitása ezzel a kiegészítéssel sincs igazolva.
+
+## Működés
+
+Az induló `capture_enabled: false` már a setup előtt érvényesül: a vevő
+megszakításkezelője az inicializáláskor sem kerül rövid időre bekapcsolásra.
+A puffer egyszer lefoglalódik; kapcsolódásonként nem újra és újra foglaljuk.
+
+A bekapcsolás feltétele: Wi-Fi kapcsolódva, API állapotfeliratkozás jelen,
+a HA engedélyező kapcsoló ON, nincs OTA, és `rf_capture_permitted` igaz.
+Öt másodperc folyamatos kész állapot után indul a vétel és a dekódolás.
+A készenléti feltételt a fő YAML másodpercenként ellenőrzi; a hálózati szakadás
+észlelése nem feltétlenül azonos a fizikai megszakadás pillanatával.
+
+Kapcsolatvesztés észlelésekor, a HA-kapcsoló kikapcsolásakor és OTA-kezdéskor:
+- leválasztja kizárólag az RF-adatláb saját megszakításkezelőjét;
+- visszavonja ennek a vevőnek a nagyfrekvenciás főciklus-kérését;
+- eldobja a félkész/függőben lévő RF-csomagot;
+- szünetelteti a dekódert és újraindítja a készenléti várakozást.
+
+A rendszer megszakításait nem tartja globálisan tiltva, és nem kapcsolgat táp-GPIO-t.
+A szünet alatt elveszett jel nem kerül később visszajátszásra. Az `on_raw` és más
+vevőhallgatók ilyenkor nem kapnak adatot. A vevő főciklusfüggvénye regisztrálva marad,
+de kikapcsolt vételnél rögtön visszatér.
+
+## Napló és próba
+
+Induláskor ezt keresd:
 
 ```text
-RFLink RX compatibility bridge v0.1.5 (all RX plugins + API gate + EV1527 gestures):
-  RX plugins compiled: 48
-  Decode enabled: NO
+v0.1.5-rxgate1: CAPTURE and DECODE wait for API; all RX plugins retained
+Remote Receiver rxgate1 (ESP8266 / based on 2026.9.0):
+  Capture enabled: NO
+RX plugins compiled: 48
 ```
 
-Az elején a NO szándékos. Az API-állapotfeliratkozás és az 5 másodperces várakozás után
-DECODE=ON következik. A régi 60 másodperces tesztleállítás nincs benne.
-A gesztuscsomag saját naplósora v0.1.4 maradhat: annak működése most nem változott.
+A HA-csatlakozás előtti állapotban:
 
-## Mi lett itt ténylegesen tesztelve?
+```text
+CAPTURE=OFF; DECODE=OFF; ... frames=0; calls=0; observed=0; irq_total=0
+```
 
-A `TEST_RESULTS.txt` és `TEST_LOGS/` tartalmazza az eredményeket.
-GNU C++20 HOST fordítás, az ESP8266 const-PSTR típusának megőrzésével; az összes 48
-RX-plugin együtt, mindegyik egyenként, valamint 47/4/2-es készletek. A valódi bridge
-és dekóder C++-ja, a gesztus YAML-lambdái és védett flash-helyettesítés futott
-ASan/UBSan ellenőrzéssel. Nem csak YAML-szintaxist néztünk.
+Az `irq_total` a vevő saját megszakításkezelőjének hívásszáma (a szűrt élek is
+beleszámítanak), nem a rádiós parancsok száma. A `frames` az átadott nyers
+impulzussorok száma, nem az érvényes parancsoké. Mindkét számláló összegző:
+induláskor nulla, későbbi kikapcsoláskor megáll, nem nullázódik.
 
-FONTOS: ez még nem teljes ESPHome/Xtensa firmware-fordítás. Ebben a környezetben
-nincs elérhető célfordító/ESPHome-telepítés; a függőségek beszerzése nem sikerült.
-ESP8266 RAM/flash méretet, valódi Wi-Fi/API/OTA működést vagy a 48 protokoll valós
-rádiós jelének vételét ezek a tesztek nem igazolják. A saját mostani pontos error:
-sorodat nem kaptuk meg, tehát nem biztos, hogy csak a reprodukált hiba érintett.
+Wi-Fi + HA API állapotfeliratkozás és a várakozás után:
 
-## Valódi firmware-ellenőrzés GitHubon, feltöltés nélkül
+```text
+RX gate: capture=ON; irq=ON; fast_loop=ON
+CAPTURE=ON; DECODE=ON; api_states=YES; wifi=CONNECTED
+```
 
-Opcionálisan töltsd fel még a `.github/`, `.ci/`, `tests/` könyvtárakat,
-`UPSTREAM_SHA256.json` és `rflink-all-plugins-proba.yaml` fájlt a repó gyökerébe.
-A meglévő eredeti RFLink-fájlok kellenek a fordításhoz.
+A változatlan RFLink-híd korábbi `RF capture remains active` szövege csak a híd
+saját dekóderkapcsolójára vonatkozik. Ebben a próbában a tényleges vevőállapotot az
+új `CAPTURE` és `RX gate` sorok mutatják. A híd verziósora változatlanul v0.1.5.
 
-A workflow neve **RFLink all RX firmware**. Forrásmódosítás feltöltésekor futásra
-van beállítva, és az Actions lapon kézzel is indítható (Run workflow).
-ESPHome 2026.9.0 konténerben, `nodemcuv2` céllal három teljes fordítást készít:
-`all`, `configured`, `[61]`. Minden változatban megmarad az API + összes adat + gesztus.
-A forrásfájlokat közvetlenül az adott commitból olvassa, nem egy külön main-gyorsítótárból.
+Először ne nyomj távirányítót. Várd meg a Wi-Fi- és HA-kapcsolódást, és csak az
+ON állapot után próbálj rövid, dupla, tripla és tartott nyomást. Figyeld a kapcsolat
+és a memória stabilitását. Az összes plugin bekapcsolása nem jelent automatikus
+érzékelőfelismerést vagy minden protokollra kiterjedő gesztuskezelést.
 
-A workflow-t innen NEM indítottuk el. Csak a fájljait és a bemenetgenerálást ellenőriztük.
-A CI-hez nyilvános, mesterséges jelszavak és API-kulcs készülnek elkülönített mappában;
-valódi titkot nem kell a GitHubra tenni. Ezt a próbakonfigurációt NEM szabad a készülékre
-feltölteni. Nincs hardverfeltöltési lépés; csak a fordítási naplókat teszi elérhetővé.
-A zöld eredmény teljes fordítást igazol, de rádiós és hálózati hardverpróbát az sem.
+Ha `CAPTURE=OFF`, `irq_total=0`, `calls=0` mellett is sikertelen a Wi-Fi, akkor ebben
+az összeállításban már nem a ténylegesen futó RF-megszakítás vagy dekóder tartja
+fel a kapcsolódást. Ez nem bizonyít routerhibát: a megmaradt szoftver és a hardver
+egyéb tényezőit kell célzottan vizsgálni.
+Ha OFF állapotban kapcsolódik, de ON után szakad meg, a különbség a vétel
+engedélyezéséhez köthető, a pontos belső okhoz további mérés kell.
 
-Helyi host-ellenőrzés Linuxon (g++, Python, PyYAML szükséges):
+A `rf_capture_permitted: "false"` kapcsolóval külön diagnosztikai fordításban a
+vétel a HA-csatlakozás után is tiltva tartható. Az első próbában maradjon `"true"`.
+
+## OTA helyreállítási gomb
+
+Az új YAML egy `RFLink OTA helyreállítás` safe-mode gombot is tartalmaz. Ez a
+telepítés után, amikor már van HA-kapcsolat, biztonsági módba indíthatja az eszközt
+hálózati frissítéshez. Ebben a módban az RF és a szokásos HA-entitások nem működnek.
+Most ne nyomd meg a normál indulási próba közben. Nem segít visszamenőleg a már
+futó, elérhetetlen firmware-en.
+
+## Visszaállítás
+
+A mentett 0.1.5 YAML visszaállításával a külső komponensek listája ismét `[rflink]`.
+Az új fájlok maradhatnak a GitHubon, ha a konfiguráció nem tölti be őket.
+Clean build és új telepítés szükséges. Ez a visszaállítás nem módosít eredeti plugint.
+
+## Tesztek és forrás
+
+A `TEST_RESULTS.txt` és `TEST_LOGS/` a tényleges host tesztek eredményeit tartalmazza.
+Futtatás a teljes v0.1.5 repóval:
 
 ```bash
-python3 tests/all_plugins/test_all_plugins.py --repo . --out /tmp/rflink-host-results
+python3 tests/rx_gate/run_tests.py --repo /utvonal/esphome-rflink --out /tmp/rxgate-results
 ```
 
-## Megmaradó korlátok, nem elhallgatott ismert jelenségek
+A teszt és a helyettesítő fejlécfájlok nem kerülnek a firmware-be.
 
-- A Plugin_037 eredeti `%x`/`unsigned long` format warningja megmaradt. A tesztekben
-  nem állítja le a fordítást; nincs elnyomva. A 083-as const típushiba más jellegű.
-- A teljes 47/48-as készlet megosztott CRC-állapotot használ. A szintetikus 41 keretes
-  tartásból ilyenkor 41 hagyományos JSON, a 2/4-es készletből 1 JSON keletkezett.
-  Az új gesztuskezelő mindegyik összeállításnál egy holdot, ismétléseket és egy
-  hold_release-t készített; a double/triple tesztek is sikeresek. A régi button_08
-  eseményre épített automatizmust ne futtasd párhuzamosan az új gesztusos vezérléssel.
-- A Plugin_083 eredeti kódja a parancsát második NAME mezőként írja, például NAME=CMD=UP.
-  A fordítási javítás ezt nem írja át és nem hitelesít normalizált Brel HA-parancskezelést.
-  A különböző protokollok szemantikai sajátosságaihoz további illesztés szükséges lehet.
-- Nem bizonyított a teljes pluginlista hosszú távú stabilitása az ESP8266-on.
-  Az API-first indítás maradjon, a heap/max_block és futásidő naplót a teljes készlettel
-  is ellenőrizni kell. Az egységes számláló nem jelenti minden protokoll valódi tesztjét.
-- Pluginlicencek: az eredeti forrás licencei érvényesek; egyesek kereskedelmi használati
-  korlátozást is tartalmaznak. Ez a kompatibilitási frissítés nem ad új felhasználási jogot.
+Upstream alap (ESPHome 2026.9.0):
+- https://raw.githubusercontent.com/esphome/esphome/2026.9.0/esphome/components/remote_receiver/remote_receiver.cpp
+- https://raw.githubusercontent.com/esphome/esphome/2026.9.0/esphome/components/remote_receiver/remote_receiver.h
+- https://raw.githubusercontent.com/esphome/esphome/2026.9.0/esphome/components/remote_receiver/__init__.py
+- https://esphome.io/components/external_components/
+- https://esphome.io/components/api/
+- https://esphome.io/components/button/safe_mode/
+
+A módosított C++ vevő a mellékelt GPLv3, a Python rész a mellékelt MIT licenc alatt
+szerepel. A fájlok elején jelölt a változtatás és annak dátuma.
