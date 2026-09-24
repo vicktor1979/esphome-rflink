@@ -1,7 +1,8 @@
-# FRAGMENT: an OPTIONAL per-device weather sensor. Do not enable with example IDs.
-# For local use, put the packages directory beside the device YAML.
+# FRAGMENT: OPTIONAL per-device weather sensor.
+# Do not use the placeholder RF ID as-is.
 # Replace protocol and RF ID with the actual values from RF utolsó üzenet.
-# This demonstrates a Cresta device. It is NOT an identified real user device.
+# This demonstrates a Cresta-style configuration example.
+# It is NOT an identified real user device.
 packages:
   rflink_api: !include packages/rflink-ha-api.yaml
   outdoor_weather: !include
