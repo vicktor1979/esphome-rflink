@@ -9,12 +9,16 @@ namespace rflink {
 static const char *const TAG = "rflink";
 
 void RFLinkComponent::setup() {
-  ::rflink_legacy::reset();
+  // With plugin_switches configured, only the mandatory preprocessor (001)
+  // starts enabled. Individual switch components then restore/choose the
+  // runtime states. Without plugin_switches, keep the pre-v0.1.8 behaviour:
+  // all ordinary compiled decoders start enabled (254 debug stays OFF).
+  ::rflink_legacy::reset(!this->plugin_switch_mode_);
   this->publish_active_plugins();
 }
 
 void RFLinkComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.8 (runtime plugin gates; receiver/gestures unchanged):");
+  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.8.1 (managed runtime plugin gates; receiver/gestures unchanged):");
   ESP_LOGCONFIG(TAG, "  Plugin profile: %s", rflink_legacy::plugin_profile());
   ESP_LOGCONFIG(TAG, "  RX plugins compiled: %u", static_cast<unsigned>(::rflink_legacy::plugin_count()));
   ESP_LOGCONFIG(TAG, "  RX plugins enabled: %u", static_cast<unsigned>(::rflink_legacy::enabled_plugin_count()));

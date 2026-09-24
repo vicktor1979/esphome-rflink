@@ -1,6 +1,6 @@
-In file included from /tmp/rflink-v0181-reg-jjpmcshg/src/rflink_vendor/registry.inc:48,
+In file included from /tmp/rflink-v0181-reg-jjpmcshg/src/rflink_vendor/registry.inc:47,
                  from /mnt/data/rflink-v0.1.8.1-work/components/rflink/rflink_engine.cpp:125,
-                 from /mnt/data/rflink-v0.1.8.1-work/tests/extensions/runtime_gate_test.cpp:1:
+                 from /mnt/data/rflink-v0.1.8.1-work/tests/extensions/runtime_gate_extension_test.cpp:1:
 /tmp/rflink-v0181-reg-jjpmcshg/src/rflink_vendor/Overrides/Plugin_001.c.inc: In function 'boolean rflink_legacy::Plugin_001(byte, char*)':
 /tmp/rflink-v0181-reg-jjpmcshg/src/rflink_vendor/Overrides/Plugin_001.c.inc:95:11: warning: unused variable 'j' [-Wunused-variable]
    95 |    int i, j;
@@ -10,14 +10,6 @@ In file included from /tmp/rflink-v0181-reg-jjpmcshg/src/rflink_vendor/registry.
       |                    ~~~~~^~~~~~~~
 /tmp/rflink-v0181-reg-jjpmcshg/src/rflink_vendor/Overrides/Plugin_001.c.inc:91:41: warning: unused parameter 'string' [-Wunused-parameter]
    91 | boolean Plugin_001(byte function, char *string)
-      |                                   ~~~~~~^~~~~~
-In file included from /tmp/rflink-v0181-reg-jjpmcshg/src/rflink_vendor/registry.inc:49:
-/tmp/rflink-v0181-reg-jjpmcshg/src/rflink_vendor/Plugins/Plugin_061.c.inc: In function 'boolean rflink_legacy::Plugin_061(byte, char*)':
-/tmp/rflink-v0181-reg-jjpmcshg/src/rflink_vendor/Plugins/Plugin_061.c.inc:51:25: warning: unused parameter 'function' [-Wunused-parameter]
-   51 | boolean Plugin_061(byte function, char *string)
-      |                    ~~~~~^~~~~~~~
-/tmp/rflink-v0181-reg-jjpmcshg/src/rflink_vendor/Plugins/Plugin_061.c.inc:51:41: warning: unused parameter 'string' [-Wunused-parameter]
-   51 | boolean Plugin_061(byte function, char *string)
       |                                   ~~~~~~^~~~~~
 
 EXIT 0

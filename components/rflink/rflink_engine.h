@@ -13,7 +13,7 @@ struct FrameObservation {
   uint16_t plugin_id{0};
   uint32_t code{0};  // EV1527: 20-bit device ID followed by the 4-bit SWITCH.
 };
-void reset();
+void reset(bool enable_all_compiled = true);
 size_t plugin_count();
 const char *plugin_profile();
 

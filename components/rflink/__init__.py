@@ -141,6 +141,7 @@ async def to_code(config):
     cg.add(var.set_log_messages(config[CONF_LOG_MESSAGES]))
 
     plugin_switches = config.get(CONF_PLUGIN_SWITCHES)
+    cg.add(var.set_plugin_switch_mode(plugin_switches is not None))
     if plugin_switches:
         restore = plugin_switches[CONF_RESTORE]
         for conf in plugin_switches[CONF_PLUGINS]:
@@ -149,6 +150,10 @@ async def to_code(config):
             await switch.register_switch(sw, conf)
             if not restore:
                 cg.add(sw.set_restore_mode(switch.RESTORE_MODES["ALWAYS_ON"]))
+            elif conf[CONF_PLUGIN_ID] == 254:
+                # Unsupported-packet debug is intentionally OFF on its first
+                # boot. Once changed by the user, restore:true keeps that state.
+                cg.add(sw.set_restore_mode(switch.RESTORE_MODES["RESTORE_DEFAULT_OFF"]))
         active = await text_sensor.new_text_sensor(plugin_switches[CONF_ACTIVE_PLUGINS])
         cg.add(var.set_active_plugins_text_sensor(active))
 

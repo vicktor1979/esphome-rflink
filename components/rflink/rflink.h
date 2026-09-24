@@ -21,6 +21,7 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   void dump_config() override;
   bool on_receive(remote_base::RemoteReceiveData data) override;
   void set_log_messages(bool enabled) { this->log_messages_ = enabled; }
+  void set_plugin_switch_mode(bool enabled) { this->plugin_switch_mode_ = enabled; }
   void set_decode_enabled(bool enabled);
   bool is_decode_enabled() const { return this->decode_enabled_; }
   uint32_t get_decode_calls() const { return this->decode_calls_; }
@@ -50,6 +51,7 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
 
  protected:
   bool log_messages_{true};
+  bool plugin_switch_mode_{false};
   bool decode_enabled_{true};
   uint32_t decode_calls_{0};
   uint32_t skipped_frames_{0};

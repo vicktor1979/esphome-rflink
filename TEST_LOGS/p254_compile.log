@@ -1,0 +1,24 @@
+$ g++ -std=gnu++20 -Wall -Wextra -Werror=format -DESP8266 -DUSE_ESP8266 -DRFLINK_TEST_STRICT_PROGMEM -I/mnt/data/rflink-v0.1.8.1-work/tests/all_plugins/stubs -I/tmp/rflink-v0181-ahn9fqrx/src -I/mnt/data/rflink-v0.1.8.1-work/components/rflink -g -O1 -fno-pie -no-pie -fsanitize=address,undefined -fno-omit-frame-pointer /mnt/data/rflink-v0.1.8.1-work/tests/extensions/runtime_gate_254_test.cpp -o /tmp/rflink-v0181-ahn9fqrx/p254
+In file included from /tmp/rflink-v0181-ahn9fqrx/src/rflink_vendor/registry.inc:48,
+                 from /mnt/data/rflink-v0.1.8.1-work/components/rflink/rflink_engine.cpp:125,
+                 from /mnt/data/rflink-v0.1.8.1-work/tests/extensions/runtime_gate_254_test.cpp:1:
+/tmp/rflink-v0181-ahn9fqrx/src/rflink_vendor/Overrides/Plugin_001.c.inc: In function 'boolean rflink_legacy::Plugin_001(byte, char*)':
+/tmp/rflink-v0181-ahn9fqrx/src/rflink_vendor/Overrides/Plugin_001.c.inc:95:11: warning: unused variable 'j' [-Wunused-variable]
+   95 |    int i, j;
+      |           ^
+/tmp/rflink-v0181-ahn9fqrx/src/rflink_vendor/Overrides/Plugin_001.c.inc:91:25: warning: unused parameter 'function' [-Wunused-parameter]
+   91 | boolean Plugin_001(byte function, char *string)
+      |                    ~~~~~^~~~~~~~
+/tmp/rflink-v0181-ahn9fqrx/src/rflink_vendor/Overrides/Plugin_001.c.inc:91:41: warning: unused parameter 'string' [-Wunused-parameter]
+   91 | boolean Plugin_001(byte function, char *string)
+      |                                   ~~~~~~^~~~~~
+In file included from /tmp/rflink-v0181-ahn9fqrx/src/rflink_vendor/registry.inc:49:
+/tmp/rflink-v0181-ahn9fqrx/src/rflink_vendor/Plugins/Plugin_254.c.inc: In function 'boolean rflink_legacy::Plugin_254(byte, char*)':
+/tmp/rflink-v0181-ahn9fqrx/src/rflink_vendor/Plugins/Plugin_254.c.inc:28:25: warning: unused parameter 'function' [-Wunused-parameter]
+   28 | boolean Plugin_254(byte function, char *string)
+      |                    ~~~~~^~~~~~~~
+/tmp/rflink-v0181-ahn9fqrx/src/rflink_vendor/Plugins/Plugin_254.c.inc:28:41: warning: unused parameter 'string' [-Wunused-parameter]
+   28 | boolean Plugin_254(byte function, char *string)
+      |                                   ~~~~~~^~~~~~
+
+EXIT 0

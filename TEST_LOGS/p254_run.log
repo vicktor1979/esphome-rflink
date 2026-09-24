@@ -1,0 +1,4 @@
+$ /tmp/rflink-v0181-ahn9fqrx/p254
+PASS plugin 254 runtime OFF/ON/OFF unsupported-packet fallback
+
+EXIT 0

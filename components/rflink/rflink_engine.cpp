@@ -124,10 +124,26 @@ RFLINK_DEC_DISPLAY(METER) RFLINK_DEC_DISPLAY(VOLT)
 #include "rflink_vendor/7_Utils.cpp.inc"
 #include "rflink_vendor/registry.inc"
 
-void reset() {
+void reset(bool enable_all_compiled) {
   RawSignal = RawSignalStruct{};
   for (auto &word : plugin_enabled_mask) word = 0;
-  for (const auto id : RFLINK_COMPILED_PLUGIN_IDS) mask_set(static_cast<uint16_t>(id), true);
+
+  // Plugin 001 is the mandatory RFLink packet preprocessor and must always
+  // stay active when it is compiled. In managed/plugin-switch mode all other
+  // decoders start OFF and are restored by their ESPHome switches.
+  if (is_plugin_compiled(1)) mask_set(1, true);
+  if (enable_all_compiled) {
+    for (const auto id : RFLINK_COMPILED_PLUGIN_IDS) {
+      const auto plugin_id = static_cast<uint16_t>(id);
+      if (plugin_id == 254) continue;  // debug fallback is opt-in only
+      mask_set(plugin_id, true);
+    }
+  }
+
+  // Plugin 254 has a second legacy gate in the original source. Keep both
+  // legacy debug flags OFF until the runtime switch explicitly enables it.
+  RFUDebug = false;
+  QRFUDebug = false;
 #if RFLINK_PROFILE_EXTENDED
   rf_ext::reset_history();
 #endif
@@ -150,7 +166,16 @@ bool is_plugin_enabled(uint16_t plugin_id) {
 
 bool set_plugin_enabled(uint16_t plugin_id, bool enabled) {
   if (!is_plugin_compiled(plugin_id)) return false;
+  // 001 is required by the legacy pipeline and cannot be disabled at runtime.
+  if (plugin_id == 1 && !enabled) return false;
+
   mask_set(plugin_id, enabled);
+  if (plugin_id == 254) {
+    // Make the runtime switch actually activate/deactivate the original
+    // unsupported-packet analyzer. Use the readable microsecond output mode.
+    RFUDebug = enabled;
+    QRFUDebug = false;
+  }
   return true;
 }
 
