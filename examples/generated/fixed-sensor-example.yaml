@@ -1,4 +1,9 @@
-# Per-device RFLink field package, generated for an EXPLICIT NAME + ID.
+# GENERATED EXAMPLE: per-device RFLink field package for an exact NAME + ID.
+# This is not a complete ESPHome firmware YAML.
+#
+# A package like this can be generated with tools/make_rf_device.py.
+# Replace the example protocol/ID with values observed from your own RF device.
+#
 # Numeric/binary state becomes unknown on expiry; no fake OFF/OK readings.
 # Values from other devices cannot overwrite these entities.
 # RF events while the API-dependent decoder is paused are not buffered.
