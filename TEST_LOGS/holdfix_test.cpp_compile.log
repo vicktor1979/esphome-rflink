@@ -1,3 +1,0 @@
-$ g++ -std=gnu++20 -Wall -Wextra -Werror -fno-pie -no-pie -fsanitize=address,undefined -I/mnt/data/rflink_work/baseline/components/rflink /mnt/data/rflink_work/baseline/tests/holdfix/holdfix_test.cpp -o /tmp/rflink-remote-tests-wwfci5qc/hold_unit
-
-EXIT 0

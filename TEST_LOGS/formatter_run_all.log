@@ -1,4 +1,0 @@
-$ /tmp/rflink-all-3xcym84a/formatter
-PASS: formatter RAM/PSTR strings, escaping, UTF-8, null/empty, size limit.
-
-EXIT 0

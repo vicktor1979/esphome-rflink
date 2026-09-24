@@ -1,8 +1,0 @@
-$ /tmp/rflink-all-3xcym84a/brel
-{"PARAM":"20;00","NAME":"BrelMotor","ID":"123456","SWITCH":"08","NAME":"CMD=UP"}
-{"PARAM":"20;00","NAME":"BrelMotor","ID":"123456","SWITCH":"08","NAME":"CMD=DOWN"}
-{"PARAM":"20;00","NAME":"BrelMotor","ID":"123456","SWITCH":"08","NAME":"CMD=STOP"}
-{"PARAM":"20;00","NAME":"BrelMotor","ID":"123456","SWITCH":"08","NAME":"CMD=SETUP"}
-PASS: four Brel command paths read protected PSTR; original PSTR const type restored.
-
-EXIT 0
