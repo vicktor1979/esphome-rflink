@@ -1,0 +1,25 @@
+# FRAGMENT: generic RFLink remote/message example.
+# Not a complete ESPHome firmware YAML.
+#
+# Use this for protocols where gesture handling is not available.
+# Copy the protocol, RF ID, button and command values from RFLink learning mode.
+#
+# In message mode only the "received" event is used.
+
+event:
+  - platform: rflink_remote
+    id: generic_rflink_message_example
+    name: "RFLink message example"
+    remote_id: rf_remotes
+
+    protocol: "REPLACE_WITH_PROTOCOL"
+    rf_id: "REPLACE_WITH_RF_ID"
+    button: "REPLACE_WITH_BUTTON"
+    command: "REPLACE_WITH_COMMAND"
+
+    mode: message
+
+    event_types:
+      - received
+
+    message_cooldown: 250ms
