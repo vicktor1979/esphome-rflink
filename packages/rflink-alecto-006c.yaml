@@ -4,7 +4,7 @@
 # A PARAM változó csomagsorszám, ezért nem szűrünk rá.
 # TEMP: RFLink hexadecimális, előjelbites, tizedfokos formátum.
 # BAT: LOW = alacsony elem; OK = rendben. Nem százalékos töltöttség.
-# 60 perc az adott mező új értéke nélkül -> ismeretlen állapot.
+# Az utolsó érvényes értéket korlátlan ideig megtartja a következő érvényes mérésig.
 # Az entity_category: "" miatt nem diagnosztikai kategóriájúak.
 
 json:
@@ -21,8 +21,6 @@ sensor:
     state_class: measurement
     accuracy_decimals: 1
     update_interval: never
-    filters:
-      - timeout: 60min
 
 binary_sensor:
   - platform: template
@@ -31,8 +29,6 @@ binary_sensor:
     device_class: battery
     internal: false
     entity_category: ""
-    filters:
-      - timeout: 60min
 
 script:
   - id: alecto_006c_process
