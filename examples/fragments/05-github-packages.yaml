@@ -1,0 +1,30 @@
+# FRAGMENT: Load the RFLink Home Assistant packages directly from GitHub.
+# This is an alternative to local !include package loading.
+#
+# For a stable installation, use a released version tag instead of `main`.
+# The weather mapping below is optional and uses placeholder NAME/ID values.
+
+packages:
+  rflink_native:
+    url: https://github.com/vicktor1979/esphome-rflink
+    ref: v0.1.8.2
+    refresh: 5min
+    files:
+      - packages/rflink-ha-api.yaml
+
+      - path: packages/rflink-ha-weather.yaml
+        vars:
+          sensor_prefix: outdoor_weather
+          sensor_name: "Udvari érzékelő"
+          rf_protocol: "Cresta"
+          rf_device_id: "REPLACE_WITH_ACTUAL_ID"
+          stale_after: 60min
+
+# The rflink.on_message block must call both scripts:
+#
+#   rflink_api_process
+#   outdoor_weather_process
+#
+# See:
+#   examples/fragments/existing-device-api-only.yaml
+#   examples/fragments/optional-weather-device.yaml
