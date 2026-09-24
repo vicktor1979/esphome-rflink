@@ -1,0 +1,13 @@
+In file included from /tmp/rflinkv018src/rflink_vendor/registry.inc:47,
+                 from components/rflink/rflink_engine.cpp:125,
+                 from tests/extensions/runtime_gate_extension_test.cpp:1:
+/tmp/rflinkv018src/rflink_vendor/Overrides/Plugin_001.c.inc: In function 'boolean rflink_legacy::Plugin_001(byte, char*)':
+/tmp/rflinkv018src/rflink_vendor/Overrides/Plugin_001.c.inc:95:11: warning: unused variable 'j' [-Wunused-variable]
+   95 |    int i, j;
+      |           ^
+/tmp/rflinkv018src/rflink_vendor/Overrides/Plugin_001.c.inc:91:25: warning: unused parameter 'function' [-Wunused-parameter]
+   91 | boolean Plugin_001(byte function, char *string)
+      |                    ~~~~~^~~~~~~~
+/tmp/rflinkv018src/rflink_vendor/Overrides/Plugin_001.c.inc:91:41: warning: unused parameter 'string' [-Wunused-parameter]
+   91 | boolean Plugin_001(byte function, char *string)
+      |                                   ~~~~~~^~~~~~

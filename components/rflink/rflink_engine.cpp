@@ -22,6 +22,18 @@ constexpr size_t MAX_JSON_SIZE = 1024;
 std::string output;
 byte sequence = 0;
 bool started = false, finished = false, overflow = false;
+uint32_t plugin_enabled_mask[8]{};  // 256 plugin IDs, 32 bytes RAM.
+
+bool mask_get(uint16_t plugin_id) {
+  if (plugin_id > 255) return false;
+  return (plugin_enabled_mask[plugin_id >> 5] & (1UL << (plugin_id & 31))) != 0;
+}
+void mask_set(uint16_t plugin_id, bool enabled) {
+  if (plugin_id > 255) return;
+  const uint32_t bit = 1UL << (plugin_id & 31);
+  if (enabled) plugin_enabled_mask[plugin_id >> 5] |= bit;
+  else plugin_enabled_mask[plugin_id >> 5] &= ~bit;
+}
 
 void append(const char *text) {
   if (overflow || text == nullptr) return;
@@ -114,6 +126,8 @@ RFLINK_DEC_DISPLAY(METER) RFLINK_DEC_DISPLAY(VOLT)
 
 void reset() {
   RawSignal = RawSignalStruct{};
+  for (auto &word : plugin_enabled_mask) word = 0;
+  for (const auto id : RFLINK_COMPILED_PLUGIN_IDS) mask_set(static_cast<uint16_t>(id), true);
 #if RFLINK_PROFILE_EXTENDED
   rf_ext::reset_history();
 #endif
@@ -124,6 +138,42 @@ void reset() {
 size_t plugin_count() { return RFLINK_TOTAL_PLUGINS; }
 const char *plugin_profile() { return RFLINK_PLUGIN_PROFILE; }
 
+bool is_plugin_compiled(uint16_t plugin_id) {
+  for (const auto id : RFLINK_COMPILED_PLUGIN_IDS)
+    if (id == plugin_id) return true;
+  return false;
+}
+
+bool is_plugin_enabled(uint16_t plugin_id) {
+  return is_plugin_compiled(plugin_id) && mask_get(plugin_id);
+}
+
+bool set_plugin_enabled(uint16_t plugin_id, bool enabled) {
+  if (!is_plugin_compiled(plugin_id)) return false;
+  mask_set(plugin_id, enabled);
+  return true;
+}
+
+size_t enabled_plugin_count() {
+  size_t count = 0;
+  for (const auto id : RFLINK_COMPILED_PLUGIN_IDS)
+    if (mask_get(static_cast<uint16_t>(id))) ++count;
+  return count;
+}
+
+std::string enabled_plugins_csv() {
+  std::string result;
+  result.reserve(RFLINK_TOTAL_PLUGINS * 4);
+  char item[8];
+  for (const auto id : RFLINK_COMPILED_PLUGIN_IDS) {
+    if (!mask_get(static_cast<uint16_t>(id))) continue;
+    if (!result.empty()) result += ',';
+    std::snprintf(item, sizeof(item), "%03u", static_cast<unsigned>(id));
+    result += item;
+  }
+  return result;
+}
+
 bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObservation *observation) {
   if (observation != nullptr) *observation = FrameObservation{};
   json.clear(); clear_message(); RawSignal = RawSignalStruct{};
@@ -133,6 +183,7 @@ bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObserva
   if (!pulses.valid) return false;
   for (const auto &extension : EXT_PLUGINS) {
     if (extension.decode == nullptr) break;
+    if (!mask_get(static_cast<uint16_t>(extension.id))) continue;
     if (extension.decode(pulses)) {
       if (finished && !overflow) json = output;
       return true;
@@ -166,6 +217,7 @@ bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObserva
   RawSignal.Number = static_cast<int>(dest - 1);
   // index 0 is a plugin marker, and Number+1 remains the original zero sentinel.
   for (size_t index = 0; index < sizeof(RX_PLUGINS)/sizeof(RX_PLUGINS[0]); ++index) {
+    if (!mask_get(static_cast<uint16_t>(RX_PLUGINS[index].id))) continue;
     SignalHash = static_cast<byte>(index);
     if (RX_PLUGINS[index].decode(0, nullptr)) {
       // Plugin_061 validates the bits BEFORE its duplicate check. Both its new

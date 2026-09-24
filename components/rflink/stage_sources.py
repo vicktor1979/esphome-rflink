@@ -110,6 +110,9 @@ def stage(repo: Path, destination: Path, selection="configured", profile="legacy
     registry += [f"#define RFLINK_PROFILE_EXTENDED {1 if profile == 'extended' else 0}",
                  f"#define RFLINK_TOTAL_PLUGINS {len(ids)}",
                  f'#define RFLINK_PLUGIN_PROFILE "{profile}"']
+    registry += ["static const unsigned RFLINK_COMPILED_PLUGIN_IDS[] = {"]
+    registry += [f"  {n}," for n in ids]
+    registry += ["};", ""]
     registry += [f"#define PLUGIN_{n:03d}" for n in legacy_ids]
     for n in legacy_ids:
         if str(n) in extra["overrides"]:
