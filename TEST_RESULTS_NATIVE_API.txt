@@ -1,4 +1,0 @@
-PASS: package YAML syntax, no duplicate keys, 2 x 16 event types; no MQTT/API/radio/decoder override
-PASS: default routing, identical events, IDs, all diagnostic fields, malformed/missing inputs, length guard, per-device temperature/humidity/battery
-PASS: optional 200 ms repeat rate limit, independent remotes/buttons, PARAM ignored, millis rollover
-LIMIT: host mocks/json-c only. Not an ESPHome build, radio test, real ArduinoJson test, or Home Assistant API test.
