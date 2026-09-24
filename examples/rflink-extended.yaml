@@ -1,11 +1,11 @@
-# v0.1.7 plugin expansion example. Preserve your current device-specific YAML changes.
-# RFLink ESPHome – v0.1.6 / rxgate2 / holdfix1 configuration example.
-# Documentation revision: 2026-09-23. This is NOT a firmware/code upgrade.
-# Requires the working external components already in your GitHub repository.
-# The original RFLink/Plugins sources stay unchanged. TX is not implemented.
-# This example includes the previously requested Konyhai 08 light control.
-# Existing installation: prefer an HA-only display-name change to retain identity.
-# A firmware name change can create a new HA entity; see README.md section 4.
+# RFLink ESPHome – extended configuration example.
+# Stable base: v0.1.8.2
+#
+# ESP8266 / NodeMCU v2 example using rxgate2.
+# Extended RFLink profile with 55 compiled plugin IDs.
+# Native Home Assistant API, RF learning and runtime plugin control.
+# The original RFLink/Plugins sources remain unchanged.
+# TX is not implemented.
 substitutions:
   rf_api_settle_ms: "5000"
   rf_capture_permitted: "true"
@@ -22,7 +22,7 @@ esphome:
           id(rf_receiver).set_capture_enabled(false);
           id(rf_bridge).set_decode_enabled(false);
           id(rf_start_gate).reset();
-          ESP_LOGI("rflink.auto", "v0.1.5-rxgate2: CAPTURE and DECODE wait for API; all RX plugins retained; RX fast loop disabled");
+          ESP_LOGI("rflink.auto", "CAPTURE and DECODE wait for API; all RX plugins retained; RX fast loop disabled");
 
 esp8266:
   board: nodemcuv2
@@ -31,16 +31,16 @@ esp8266:
 packages:
   rflink_api:
     url: https://github.com/vicktor1979/esphome-rflink
-    ref: main
-    refresh: 0s
+    ref: v0.1.8.2
+    refresh: 5min
     files:
       - packages/rflink-ha-data-only.yaml
       - packages/rflink-ha-extended-fields.yaml
 
 external_components:
-  - source: github://vicktor1979/esphome-rflink@main
+  - source: github://vicktor1979/esphome-rflink@v0.1.8.2
     components: [rflink, remote_receiver, rflink_remote]
-    refresh: 0s
+    refresh: 5min
 
 api:
   id: api_main
@@ -135,32 +135,32 @@ remote_receiver:
 rflink:
   id: rf_bridge
   receiver_id: rf_receiver
-  rx_plugins: all
-  plugin_profile: extended  # 55 plugin IDs are compiled into the firmware.
 
-  # v0.1.8.2 managed runtime mode:
-  # - all 55 plugin IDs are compiled;
-  # - Plugin 001 always stays ON;
-  # - only the plugins listed below can be enabled at runtime;
-  # - every other compiled plugin stays runtime OFF.
-  # Plugin 254 is the unsupported-packet debug fallback. When it is listed,
-  # two HA diagnostics are created automatically: the last unknown pulse train
-  # and its exact pulse count.
+  rx_plugins: all
+  plugin_profile: extended
+
+  # All 55 plugin IDs are compiled into the firmware.
+  # At runtime only the plugins listed here can be enabled.
+  # Plugin 001 is always enabled.
+  #
+  # Keep this list as small as practical for the actual installation.
+  # Plugin 254 is the unsupported-signal diagnostic fallback and
+  # should normally remain OFF.
   plugin_switches:
     restore: true
     plugins: [30, 61, 83, 254]
+
     active_plugins:
       name: "RFLink aktív pluginok"
-    # Optional name overrides; omit this block to use these same defaults.
+
     unsupported_signal:
       signal:
         name: "RFLink ismeretlen jel"
       pulse_count:
         name: "RFLink ismeretlen jel impulzusszám"
 
-  # configured: the 47 RX plugins in the original config (not Plugin_083).
-  # All-plugin compilation is not a guarantee of every protocol's RF reliability.
   log_messages: true
+
   on_message:
     - then:
         - script.execute:
@@ -296,81 +296,10 @@ rflink_remote:
 
 # Add/delete remotes HERE. One entry = one exact protocol/ID/button/command.
 # Quoting numeric-looking RF codes is important: do not lose leading zeros.
-event:
-  - platform: rflink_remote
-    id: rf_gesture_event_1
-    name: "RF 085372 08 gesztus"
-    remote_id: rf_remotes
-    protocol: "EV1527"
-    rf_id: "085372"
-    button: "08"
-    command: "ON"
-    mode: gestures
-    # Optional. Omit event_types to publish ALL supported gestures.
-    event_types: [press, release, single, double, triple, click_4, click_5,
-                  click_6, click_7, click_8, click_9, click_10, hold,
-                  hold_repeat, hold_release, cancel, multi_overflow]
-    pressed:
-      id: rf_gesture_pressed_1
-      name: "RF 085372 08 gesztus nyomva"
-
-  - platform: rflink_remote
-    id: rf_gesture_event_2
-    name: "Konyhai 08 gesztus"
-    remote_id: rf_remotes
-
-    protocol: "EV1527"
-    rf_id: "01fac2"
-    button: "08"
-    command: "ON"
-    mode: gestures
-
-    event_types:
-      - single
-      - hold_repeat
-
-    pressed:
-      id: rf_gesture_pressed_2
-      name: "Konyhai 08 gesztus nyomva"
-
-    on_event:
-      then:
-        # Rovid nyomas: az eredeti +50, 255 folott 0 mukodes.
-        - if:
-            condition:
-              lambda: return event_type == "single";
-            then:
-              - homeassistant.action:
-                  action: light.turn_on
-                  data:
-                    entity_id: light.clt2_konyha_clt2_konyha
-                  data_template:
-                    brightness: >-
-                      {% set current = state_attr('light.clt2_konyha_clt2_konyha', 'brightness') %}
-                      {% if current is none %}
-                        {% set current = 0 %}
-                      {% endif %}
-                      {% set new_brightness = (current | float(0) + 50.0) | int %}
-                      {{ 0 if new_brightness > 255 else new_brightness }}
-
-        # Tartasismetles: +20, legfeljebb 255; 255 utan 0, majd ujra +20.
-        - if:
-            condition:
-              lambda: return event_type == "hold_repeat";
-            then:
-              - homeassistant.action:
-                  action: light.turn_on
-                  data:
-                    entity_id: light.clt2_konyha_clt2_konyha
-                    transition: "0"
-                  data_template:
-                    brightness: >-
-                      {% set current = state_attr('light.clt2_konyha_clt2_konyha', 'brightness') | int(0) %}
-                      {% if is_state('light.clt2_konyha_clt2_konyha', 'off') %}
-                        {% set current = 0 %}
-                      {% endif %}
-                      {% if current >= 255 %}
-                        0
-                      {% else %}
-                        {{ [current + 20, 255] | min }}
-                      {% endif %}
+# Remote examples:
+#   examples/fragments/new-ev1527-remote.yaml
+#   examples/fragments/ev1527-light-control.yaml
+#   examples/fragments/generic-message-protocol.yaml
+#
+# Copy the required event fragment into your device configuration
+# and replace the example RF values with values learned from your own remote.
