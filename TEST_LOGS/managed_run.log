@@ -1,4 +1,1 @@
-$ /tmp/rflink-v0181-ahn9fqrx/managed
 PASS managed runtime defaults, restore target states, mandatory 001, opt-in 254 debug
-
-EXIT 0

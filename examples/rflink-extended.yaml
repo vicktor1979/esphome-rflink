@@ -138,14 +138,25 @@ rflink:
   rx_plugins: all
   plugin_profile: extended  # 55 plugin IDs are compiled into the firmware.
 
-  # v0.1.8: only these selected compiled plugins get HA runtime switches.
-  # Plugins not listed here remain compiled and enabled, but have no individual HA switch.
-  # Plugin 001 is intentionally not switchable because it is the RFLink packet preprocessor.
+  # v0.1.8.2 managed runtime mode:
+  # - all 55 plugin IDs are compiled;
+  # - Plugin 001 always stays ON;
+  # - only the plugins listed below can be enabled at runtime;
+  # - every other compiled plugin stays runtime OFF.
+  # Plugin 254 is the unsupported-packet debug fallback. When it is listed,
+  # two HA diagnostics are created automatically: the last unknown pulse train
+  # and its exact pulse count.
   plugin_switches:
     restore: true
-    plugins: [16, 18, 30, 37, 48, 49, 50, 61, 76, 77, 83, 254]
+    plugins: [30, 61, 83, 254]
     active_plugins:
       name: "RFLink aktív pluginok"
+    # Optional name overrides; omit this block to use these same defaults.
+    unsupported_signal:
+      signal:
+        name: "RFLink ismeretlen jel"
+      pulse_count:
+        name: "RFLink ismeretlen jel impulzusszám"
 
   # configured: the 47 RX plugins in the original config (not Plugin_083).
   # All-plugin compilation is not a guarantee of every protocol's RF reliability.

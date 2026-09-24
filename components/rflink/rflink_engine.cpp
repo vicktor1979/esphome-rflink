@@ -79,6 +79,37 @@ void hex_field(const char *name, unsigned long value, unsigned width) {
   text_field(name, b);
 }
 void clear_message() { output.clear(); started = finished = overflow = false; }
+
+constexpr size_t MAX_UNSUPPORTED_SUMMARY_SIZE = 240;
+
+void build_unsupported_summary(int pulse_count, UnsupportedObservation *unsupported) {
+  if (unsupported == nullptr || pulse_count <= 0) return;
+  unsupported->valid = true;
+  unsupported->pulse_count = static_cast<uint16_t>(std::min<int>(pulse_count, 0xFFFF));
+  unsupported->truncated = false;
+  unsupported->summary.clear();
+  unsupported->summary.reserve(MAX_UNSUPPORTED_SUMMARY_SIZE);
+
+  char header[48];
+  std::snprintf(header, sizeof(header), "Pulses=%d; Pulses(uSec)=", pulse_count);
+  unsupported->summary = header;
+
+  for (int i = 1; i <= pulse_count; ++i) {
+    char item[16];
+    const unsigned value = static_cast<unsigned>(RawSignal.Pulses[i]) * RAWSIGNAL_SAMPLE_RATE;
+    std::snprintf(item, sizeof(item), "%s%u", i == 1 ? "" : ",", value);
+    const size_t item_len = std::strlen(item);
+    // Reserve room for an explicit truncation marker. HA entity states are
+    // deliberately kept comfortably below the traditional 255-byte limit.
+    if (unsupported->summary.size() + item_len + 4 > MAX_UNSUPPORTED_SUMMARY_SIZE) {
+      unsupported->truncated = true;
+      unsupported->summary += ",...";
+      break;
+    }
+    unsupported->summary += item;
+  }
+}
+
 }  // namespace
 
 void display_Header() {
@@ -199,8 +230,10 @@ std::string enabled_plugins_csv() {
   return result;
 }
 
-bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObservation *observation) {
+bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObservation *observation,
+            UnsupportedObservation *unsupported) {
   if (observation != nullptr) *observation = FrameObservation{};
+  if (unsupported != nullptr) *unsupported = UnsupportedObservation{};
   json.clear(); clear_message(); RawSignal = RawSignalStruct{};
   if (timings.empty()) return false;
 #if RFLINK_PROFILE_EXTENDED
@@ -225,7 +258,10 @@ bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObserva
   if (end == first) return false;
   const bool append_timeout = timings[end - 1] > 0;
   const size_t count = end - first + (append_timeout ? 1 : 0);
-  if (count < MIN_RAW_PULSES || count > RAW_BUFFER_SIZE - 1) return false;
+  // The legacy Plugin 254 intentionally accepts packets from 24 pulses.
+  // Ordinary legacy decoders still keep the historical MIN_RAW_PULSES gate.
+  const bool short_debug_only = count < MIN_RAW_PULSES && count >= 24 && mask_get(254);
+  if ((count < MIN_RAW_PULSES && !short_debug_only) || count > RAW_BUFFER_SIZE - 1) return false;
   RawSignal.Multiply = RAWSIGNAL_SAMPLE_RATE; RawSignal.Time = millis();
   size_t dest = 1;
   for (size_t pos = first; pos < end; ++pos) {
@@ -243,7 +279,11 @@ bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObserva
   // index 0 is a plugin marker, and Number+1 remains the original zero sentinel.
   for (size_t index = 0; index < sizeof(RX_PLUGINS)/sizeof(RX_PLUGINS[0]); ++index) {
     if (!mask_get(static_cast<uint16_t>(RX_PLUGINS[index].id))) continue;
+    if (short_debug_only && RX_PLUGINS[index].id != 254) continue;
     SignalHash = static_cast<byte>(index);
+    // Plugin 254 clears RawSignal.Number before returning. Preserve the count
+    // so a bounded copy can be published to HA after the fallback accepts it.
+    const int raw_count_before = RX_PLUGINS[index].id == 254 ? RawSignal.Number : 0;
     if (RX_PLUGINS[index].decode(0, nullptr)) {
       // Plugin_061 validates the bits BEFORE its duplicate check. Both its new
       // frame path and its duplicate path return with SignalCRC == bitstream.
@@ -253,6 +293,9 @@ bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObserva
         observation->valid = true;
         observation->plugin_id = 61;
         observation->code = static_cast<uint32_t>(SignalCRC) & 0x00FFFFFFUL;
+      }
+      if (RX_PLUGINS[index].id == 254) {
+        build_unsupported_summary(raw_count_before, unsupported);
       }
       SignalHashPrevious = SignalHash;
       RepeatingTimer = millis() + SIGNAL_REPEAT_TIME_MS;

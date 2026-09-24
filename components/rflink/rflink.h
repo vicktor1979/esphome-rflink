@@ -11,6 +11,7 @@
 #include "esphome/components/remote_base/remote_base.h"
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/text_sensor/text_sensor.h"
+#include "esphome/components/sensor/sensor.h"
 
 namespace esphome {
 namespace rflink {
@@ -37,6 +38,8 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   bool is_plugin_compiled(uint16_t plugin_id) const;
   size_t get_enabled_plugin_count() const;
   void set_active_plugins_text_sensor(text_sensor::TextSensor *sensor) { this->active_plugins_text_sensor_ = sensor; }
+  void set_unsupported_signal_text_sensor(text_sensor::TextSensor *sensor) { this->unsupported_signal_text_sensor_ = sensor; }
+  void set_unsupported_pulse_count_sensor(sensor::Sensor *sensor) { this->unsupported_pulse_count_sensor_ = sensor; }
   void publish_active_plugins();
 
   void add_on_frame_callback(std::function<void(uint16_t, uint32_t)> &&callback) {
@@ -61,6 +64,8 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   uint32_t observed_frames_{0};
   uint32_t max_frame_callback_us_{0};
   text_sensor::TextSensor *active_plugins_text_sensor_{nullptr};
+  text_sensor::TextSensor *unsupported_signal_text_sensor_{nullptr};
+  sensor::Sensor *unsupported_pulse_count_sensor_{nullptr};
   CallbackManager<void(uint16_t, uint32_t)> frame_callbacks_;
   CallbackManager<void(bool)> decode_state_callbacks_;
   CallbackManager<void(std::string)> callbacks_;

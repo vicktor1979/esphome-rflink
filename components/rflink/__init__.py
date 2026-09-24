@@ -5,14 +5,14 @@ import logging
 from esphome import automation
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import remote_base, switch, text_sensor
+from esphome.components import remote_base, sensor, switch, text_sensor
 from esphome.const import CONF_ID, CONF_NAME, CONF_TRIGGER_ID
 from esphome.core import CORE
 
 from .stage_sources import select_plugins, stage
 
 DEPENDENCIES = ["remote_receiver"]
-AUTO_LOAD = ["remote_base", "switch", "text_sensor"]
+AUTO_LOAD = ["remote_base", "sensor", "switch", "text_sensor"]
 MULTI_CONF = False
 CODEOWNERS = []
 
@@ -25,6 +25,9 @@ CONF_RESTORE = "restore"
 CONF_PLUGINS = "plugins"
 CONF_PLUGIN_ID = "plugin_id"
 CONF_ACTIVE_PLUGINS = "active_plugins"
+CONF_UNSUPPORTED_SIGNAL = "unsupported_signal"
+CONF_SIGNAL = "signal"
+CONF_PULSE_COUNT = "pulse_count"
 _LOGGER = logging.getLogger(__name__)
 REPO = Path(__file__).resolve().parents[2]
 
@@ -85,6 +88,25 @@ def validate_plugin_switch(value):
     return PLUGIN_SWITCH_SCHEMA(value)
 
 
+UNSUPPORTED_SIGNAL_SCHEMA = cv.Schema({
+    cv.Optional(
+        CONF_SIGNAL,
+        default={CONF_NAME: "RFLink ismeretlen jel"},
+    ): text_sensor.text_sensor_schema(
+        entity_category="diagnostic",
+        icon="mdi:waveform",
+    ),
+    cv.Optional(
+        CONF_PULSE_COUNT,
+        default={CONF_NAME: "RFLink ismeretlen jel impulzusszám"},
+    ): sensor.sensor_schema(
+        accuracy_decimals=0,
+        entity_category="diagnostic",
+        icon="mdi:counter",
+    ),
+})
+
+
 PLUGIN_SWITCHES_SCHEMA = cv.Schema({
     cv.Optional(CONF_RESTORE, default=True): cv.boolean,
     cv.Required(CONF_PLUGINS): cv.ensure_list(validate_plugin_switch),
@@ -95,6 +117,9 @@ PLUGIN_SWITCHES_SCHEMA = cv.Schema({
         entity_category="diagnostic",
         icon="mdi:format-list-numbered",
     ),
+    # Only instantiated when Plugin 254 is among the exposed runtime switches.
+    # The defaults require no extra YAML for the common debug use case.
+    cv.Optional(CONF_UNSUPPORTED_SIGNAL, default={}): UNSUPPORTED_SIGNAL_SCHEMA,
 })
 
 
@@ -156,6 +181,13 @@ async def to_code(config):
                 cg.add(sw.set_restore_mode(switch.RESTORE_MODES["RESTORE_DEFAULT_OFF"]))
         active = await text_sensor.new_text_sensor(plugin_switches[CONF_ACTIVE_PLUGINS])
         cg.add(var.set_active_plugins_text_sensor(active))
+
+        if 254 in {conf[CONF_PLUGIN_ID] for conf in plugin_switches[CONF_PLUGINS]}:
+            unsupported_conf = plugin_switches[CONF_UNSUPPORTED_SIGNAL]
+            unsupported_text = await text_sensor.new_text_sensor(unsupported_conf[CONF_SIGNAL])
+            unsupported_count = await sensor.new_sensor(unsupported_conf[CONF_PULSE_COUNT])
+            cg.add(var.set_unsupported_signal_text_sensor(unsupported_text))
+            cg.add(var.set_unsupported_pulse_count_sensor(unsupported_count))
 
     for conf in config.get(CONF_ON_MESSAGE, []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
