@@ -1,4 +1,5 @@
 // Compatibility implementation; original plugin and utility bytes are unmodified.
+// v0.1.9.5: Alecto V1 repeated-row soft recovery around untouched Plugin_030.
 #include "rflink_engine.h"
 #include <Arduino.h>
 #include <algorithm>
@@ -23,6 +24,23 @@ std::string output;
 byte sequence = 0;
 bool started = false, finished = false, overflow = false;
 uint32_t plugin_enabled_mask[8]{};  // 256 plugin IDs, 32 bytes RAM.
+
+// Alecto V1 sends the same 36-bit row several times in one RF burst. On the
+// ESP8266 a weak/noisy 433 MHz signal can split a few long data gaps into
+// smaller pieces while preserving the short separator pulses. The untouched
+// Plugin_030 quite correctly rejects each damaged row by checksum. Keep a
+// tiny, burst-local soft-vote buffer so several independently damaged repeats
+// can reconstruct ONE checksum-valid row. Nothing is published unless the
+// reconstructed row also passes the original Plugin_030 validation.
+struct AlectoRepeatAccumulator {
+  uint32_t last_ms{0};
+  uint8_t frames{0};
+  uint8_t zero_votes[36]{};
+  uint8_t one_votes[36]{};
+};
+AlectoRepeatAccumulator alecto_repeat{};
+
+void reset_alecto_repeat() { alecto_repeat = AlectoRepeatAccumulator{}; }
 
 bool mask_get(uint16_t plugin_id) {
   if (plugin_id > 255) return false;
@@ -108,6 +126,180 @@ void build_unsupported_summary(int pulse_count, UnsupportedObservation *unsuppor
     }
     unsupported->summary += item;
   }
+}
+
+constexpr uint32_t ALECTO_REPEAT_WINDOW_MS = 2500;
+constexpr uint32_t ALECTO_SEPARATOR_MAX_US = 900;
+constexpr uint32_t ALECTO_ZERO_MIN_US = 1200;
+constexpr uint32_t ALECTO_ZERO_MAX_US = 2500;
+constexpr uint32_t ALECTO_ONE_MIN_US = 3000;
+constexpr uint32_t ALECTO_ONE_MAX_US = 5500;
+constexpr uint32_t ALECTO_GLITCH_MAX_US = 280;
+
+bool alecto_bits_valid(const uint8_t bits[36]) {
+  uint32_t bitstream = 0;
+  for (uint8_t i = 0; i < 32; ++i) {
+    bitstream >>= 1;
+    if (bits[i] != 0) bitstream |= (0x1UL << 31);
+  }
+  uint8_t checksum = 0;
+  for (uint8_t i = 32; i < 36; ++i) {
+    checksum >>= 1;
+    if (bits[i] != 0) checksum |= 0x08;
+  }
+  if (bitstream == 0) return false;
+
+  uint8_t data[8]{};
+  uint8_t checksumcalc = 0;
+  for (uint8_t i = 0; i < 8; ++i) {
+    data[i] = static_cast<uint8_t>((bitstream >> (4 * i)) & 0x0F);
+    checksumcalc = static_cast<uint8_t>(checksumcalc + data[i]);
+  }
+  if ((data[2] & 0x06) != 0x06)
+    checksumcalc = static_cast<uint8_t>((0x0F - checksumcalc) & 0x0F);
+  else if ((data[3] & 0x07) == 0x03)
+    checksumcalc = static_cast<uint8_t>((0x07 + checksumcalc) & 0x0F);
+  else
+    checksumcalc = static_cast<uint8_t>((0x0F - checksumcalc) & 0x0F);
+  if (checksum != checksumcalc) return false;
+
+  // Mirror Plugin_030's range checks so a coincidental checksum can never turn
+  // random 74-pulse traffic into a synthetic Alecto event.
+  if ((data[2] & 0x06) != 0x06) {
+    const uint8_t d3 = static_cast<uint8_t>(data[3] & 0x07);
+    const int temperature = static_cast<int>((data[5] << 8) | (data[4] << 4) | d3);
+    if ((temperature & 0x800) != 0) {
+      if (4096 - temperature > 0x258) return false;
+    } else if (temperature > 0x258) {
+      return false;
+    }
+    const uint8_t humidity = static_cast<uint8_t>((data[7] << 4) | data[6]);
+    if (humidity > 0x99) return false;
+    return true;
+  }
+
+  // Plugin_030 only has meaningful payload handlers for these weather subtypes.
+  const uint8_t subtype = static_cast<uint8_t>(data[3] & 0x07);
+  return subtype == 0x03 || subtype == 0x01 || subtype == 0x07;
+}
+
+bool prepare_alecto_vote_pulses(const std::vector<int32_t> &timings, uint32_t pulses[75]) {
+  if (timings.empty()) return false;
+  size_t first = 0, end = timings.size();
+  while (first < end && timings[first] < 0) ++first;
+  if (first == end) return false;
+  if (end > first && timings[end - 1] <= -SIGNAL_END_TIMEOUT_US) --end;
+  if (end == first) return false;
+  const bool append_timeout = timings[end - 1] > 0;
+  size_t signal_count = end - first;
+  size_t total_count = signal_count + (append_timeout ? 1U : 0U);
+  if (total_count < 74 || total_count > 90 || ((total_count - 74) & 1U) != 0) return false;
+
+  uint32_t work[90]{};
+  if (signal_count > 89) return false;
+  for (size_t i = 0; i < signal_count; ++i) {
+    const int64_t signed_value = timings[first + i];
+    const uint64_t us = signed_value < 0 ? -signed_value : signed_value;
+    if (us == 0 || us > 20000) return false;
+    work[i] = static_cast<uint32_t>(us);
+  }
+
+  // Frames with >74 pulses commonly contain narrow two-edge spikes. Collapse
+  // only sub-280 us middle pulses; genuine Alecto V1 separators are ~325 us or
+  // longer. Each collapse removes exactly two extra transitions.
+  while (total_count > 74) {
+    size_t best = signal_count;
+    uint32_t best_width = ALECTO_GLITCH_MAX_US + 1;
+    for (size_t i = 1; i + 1 < signal_count; ++i) {
+      if (work[i] < best_width && work[i] < ALECTO_GLITCH_MAX_US) {
+        best = i;
+        best_width = work[i];
+      }
+    }
+    if (best == signal_count) return false;
+    work[best - 1] = work[best - 1] + work[best] + work[best + 1];
+    for (size_t i = best; i + 2 < signal_count; ++i) work[i] = work[i + 2];
+    signal_count -= 2;
+    total_count -= 2;
+  }
+  if (signal_count != 73) return false;
+
+  pulses[0] = 0;
+  uint64_t total_us = 0;
+  for (size_t i = 0; i < 73; ++i) {
+    pulses[i + 1] = work[i];
+    total_us += work[i];
+  }
+  pulses[74] = SIGNAL_END_TIMEOUT_US;
+  // The user's damaged frame is ~114 ms, matching the original Plugin_030
+  // examples. This broad guard rejects unrelated short/long 74-pulse packets.
+  if (total_us < 80000 || total_us > 170000) return false;
+  if (pulses[1] > ALECTO_SEPARATOR_MAX_US) return false;
+  for (uint8_t x = 2; x <= 72; x += 2) {
+    if (pulses[x + 1] > ALECTO_SEPARATOR_MAX_US) return false;
+  }
+  return true;
+}
+
+bool prepare_alecto_repeat_recovery(const std::vector<int32_t> &timings) {
+  if (!mask_get(30)) return false;
+  uint32_t pulses[75]{};
+  if (!prepare_alecto_vote_pulses(timings, pulses)) return false;
+
+  const uint32_t now = millis();
+  if (alecto_repeat.last_ms == 0 || static_cast<uint32_t>(now - alecto_repeat.last_ms) > ALECTO_REPEAT_WINDOW_MS)
+    reset_alecto_repeat();
+  alecto_repeat.last_ms = now;
+
+  uint8_t confident = 0;
+  uint8_t frame_bits[36]{};
+  uint8_t frame_known[36]{};
+  for (uint8_t bit = 0; bit < 36; ++bit) {
+    const uint32_t us = pulses[2 + bit * 2];
+    if (us >= ALECTO_ZERO_MIN_US && us <= ALECTO_ZERO_MAX_US) {
+      frame_known[bit] = 1;
+      frame_bits[bit] = 0;
+      ++confident;
+    } else if (us >= ALECTO_ONE_MIN_US && us <= ALECTO_ONE_MAX_US) {
+      frame_known[bit] = 1;
+      frame_bits[bit] = 1;
+      ++confident;
+    }
+  }
+  // A real row should still contain mostly recognizable data gaps. This keeps
+  // unrelated 74-pulse protocols out of the vote buffer.
+  if (confident < 24) return false;
+
+  if (alecto_repeat.frames < 255) ++alecto_repeat.frames;
+  for (uint8_t bit = 0; bit < 36; ++bit) {
+    if (!frame_known[bit]) continue;
+    uint8_t &vote = frame_bits[bit] ? alecto_repeat.one_votes[bit] : alecto_repeat.zero_votes[bit];
+    if (vote < 255) ++vote;
+  }
+  if (alecto_repeat.frames < 3) return false;
+
+  uint8_t majority[36]{};
+  for (uint8_t bit = 0; bit < 36; ++bit) {
+    const uint8_t z = alecto_repeat.zero_votes[bit];
+    const uint8_t o = alecto_repeat.one_votes[bit];
+    if (static_cast<uint16_t>(z) + o < 2 || z == o) return false;
+    majority[bit] = o > z ? 1 : 0;
+  }
+  if (!alecto_bits_valid(majority)) return false;
+
+  // Recreate an ideal 74-pulse row. The caller immediately hands this to the
+  // untouched Plugin_030, whose checksum/range/repeat logic remains final.
+  RawSignal = RawSignalStruct{};
+  RawSignal.Multiply = RAWSIGNAL_SAMPLE_RATE;
+  RawSignal.Time = now;
+  RawSignal.Number = 74;
+  RawSignal.Pulses[1] = static_cast<byte>(480 / RAWSIGNAL_SAMPLE_RATE);
+  for (uint8_t bit = 0; bit < 36; ++bit) {
+    RawSignal.Pulses[2 + bit * 2] = static_cast<byte>((majority[bit] ? 4200 : 1950) / RAWSIGNAL_SAMPLE_RATE);
+    RawSignal.Pulses[3 + bit * 2] = static_cast<byte>(480 / RAWSIGNAL_SAMPLE_RATE);
+  }
+  RawSignal.Pulses[74] = static_cast<byte>(SIGNAL_END_TIMEOUT_US / RAWSIGNAL_SAMPLE_RATE);
+  return true;
 }
 
 }  // namespace
@@ -203,6 +395,7 @@ void reset(bool enable_all_compiled) {
   RFUDebug = false;
   QRFUDebug = false;
   reset_repeat_history();
+  reset_alecto_repeat();
   sequence = 0; clear_message(); output.reserve(256);
   rebuild_active_plugin_cache();
 }
@@ -236,6 +429,7 @@ bool set_plugin_enabled(uint16_t plugin_id, bool enabled) {
   if (plugin_id == 1 && !enabled) return false;
 
   mask_set(plugin_id, enabled);
+  if (plugin_id == 30) reset_alecto_repeat();
   if (plugin_id == 254) {
     // Make the runtime switch actually activate/deactivate the original
     // unsupported-packet analyzer. Use the readable microsecond output mode.
@@ -507,6 +701,22 @@ bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObserva
       RepeatingTimer = millis() + SIGNAL_REPEAT_TIME_MS;
       if (finished && !overflow) json = output;
       return true;  // includes duplicates deliberately suppressed by the plugin
+    }
+    if (RX_PLUGINS[index].id == 30) {
+      const RawSignalStruct original = RawSignal;
+      if (prepare_alecto_repeat_recovery(timings)) {
+        clear_message();
+        SignalHash = static_cast<byte>(index);
+        if (RX_PLUGINS[index].decode(0, nullptr)) {
+          reset_alecto_repeat();
+          SignalHashPrevious = SignalHash;
+          RepeatingTimer = millis() + SIGNAL_REPEAT_TIME_MS;
+          if (finished && !overflow) json = output;
+          return true;
+        }
+        RawSignal = original;
+        clear_message();
+      }
     }
   }
   return false;
