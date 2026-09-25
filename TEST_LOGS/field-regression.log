@@ -1,3 +1,0 @@
-PASS: exact routing + identical events + coalesced snapshots + all 25 numeric fields + metadata + BAT/PIR/SMOKE + invalidation + strict formats + per-device isolation + expiry refresh + UTF-8 JSON parts + API-ready gate/rollover
-PASS: YAML syntax, unique keys/IDs, unchanged GPIO/timing/plugin selection; full device generator
-NOT TESTED: real ESPHome validation/code generation, ArduinoJson, ESP8266 firmware build/flash size, Wi-Fi/API/OTA hardware, elapsed timeout scheduling.

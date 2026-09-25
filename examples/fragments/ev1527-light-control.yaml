@@ -1,0 +1,86 @@
+# FRAGMENT: EV1527 taviranyito pelda Home Assistant vilagitas vezerleshez.
+# Nem onallo ESPHome firmware-YAML.
+#
+# Feltetel:
+# - a rflink_remote komponens mar legyen konfiguralva
+# - a remote_id az itt megadott rflink_remote peldanyra mutasson
+# - csereld ki az RF ID-t, gombot es Home Assistant entity_id-t
+#
+# A pelda:
+# - rovid nyomasra +50 fenyero
+# - folyamatos nyomasnal hold_repeat esemenyekkel +20 fenyero
+# - maximum utan 0-rol indul ujra
+
+event:
+  - platform: rflink_remote
+    id: rf_gesture_event_example
+    name: "EV1527 gesztus"
+    remote_id: rf_remotes
+
+    protocol: "EV1527"
+    rf_id: "REPLACE_WITH_ACTUAL_ID"
+    button: "08"
+    command: "ON"
+    mode: gestures
+
+    event_types:
+      - single
+      - hold_repeat
+
+    pressed:
+      id: rf_gesture_pressed_example
+      name: "EV1527 gomb nyomva"
+
+    on_event:
+      then:
+        # Rovid nyomas: +50 fenyero.
+        # 255 felett 0-ra ugrik.
+        - if:
+            condition:
+              lambda: return event_type == "single";
+            then:
+              - homeassistant.action:
+                  action: light.turn_on
+                  data:
+                    entity_id: light.REPLACE_WITH_YOUR_LIGHT
+                  data_template:
+                    brightness: >-
+                      {% set current = state_attr(
+                        'light.REPLACE_WITH_YOUR_LIGHT',
+                        'brightness'
+                      ) %}
+                      {% if current is none %}
+                        {% set current = 0 %}
+                      {% endif %}
+                      {% set new_brightness =
+                        (current | float(0) + 50.0) | int %}
+                      {{ 0 if new_brightness > 255 else new_brightness }}
+
+        # Folyamatos nyomas: minden hold_repeat esemenynel +20.
+        # 255 utan 0, majd ujra novekszik.
+        - if:
+            condition:
+              lambda: return event_type == "hold_repeat";
+            then:
+              - homeassistant.action:
+                  action: light.turn_on
+                  data:
+                    entity_id: light.REPLACE_WITH_YOUR_LIGHT
+                    transition: "0"
+                  data_template:
+                    brightness: >-
+                      {% set current = state_attr(
+                        'light.REPLACE_WITH_YOUR_LIGHT',
+                        'brightness'
+                      ) | int(0) %}
+                      {% if is_state(
+                        'light.REPLACE_WITH_YOUR_LIGHT',
+                        'off'
+                      ) %}
+                        {% set current = 0 %}
+                      {% endif %}
+                      {% if current >= 255 %}
+                        0
+                      {% else %}
+                        {{ [current + 20, 255] | min }}
+                      {% endif %}

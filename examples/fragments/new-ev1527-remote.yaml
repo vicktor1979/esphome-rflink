@@ -1,0 +1,29 @@
+# FRAGMENT: add a new EV1527 remote button to an existing RFLink device.
+# Not a complete ESPHome firmware YAML.
+#
+# Replace the RF ID and button with values repeatedly observed
+# in RFLink learning mode before using this example.
+
+event:
+  - platform: rflink_remote
+    id: ev1527_remote_example
+    name: "EV1527 remote"
+    remote_id: rf_remotes
+
+    protocol: "EV1527"
+    rf_id: "REPLACE_WITH_ACTUAL_ID"
+    button: "REPLACE_WITH_ACTUAL_BUTTON"
+    command: "ON"
+    mode: gestures
+
+    event_types:
+      - single
+      - double
+      - triple
+      - hold
+      - hold_repeat
+      - hold_release
+
+    pressed:
+      id: ev1527_remote_pressed_example
+      name: "EV1527 remote pressed"

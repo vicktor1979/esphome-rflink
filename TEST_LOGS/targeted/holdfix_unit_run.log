@@ -1,6 +1,0 @@
-$ /tmp/holdfix-c88ve45i/holdfix_unit
-LEGACY: same synthetic holes 220/350/440 ms -> holds=4, releases=4
-NEW: same synthetic holes 220/350/440 ms -> holds=1, releases=1
-PASS: 34 holdfix scenarios; no RF/Wi-Fi hardware emulation.
-
-EXIT 0

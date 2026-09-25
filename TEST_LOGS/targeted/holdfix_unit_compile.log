@@ -1,3 +1,0 @@
-$ g++ -std=gnu++20 -Wall -Wextra -g -fno-pie -no-pie -fsanitize=address,undefined -fno-omit-frame-pointer -I/mnt/data/rflink_work/test_repo/components/rflink -Werror /mnt/data/rflink-v0.1.5-holdfix1/tests/holdfix/holdfix_test.cpp -o /tmp/holdfix-c88ve45i/holdfix_unit
-
-EXIT 0
