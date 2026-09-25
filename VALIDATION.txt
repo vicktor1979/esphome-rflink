@@ -1,0 +1,13 @@
+RFLink v0.1.9.1 validation
+
+PASS: exact, unmodified RFLink Plugin_030 Alecto V1 sample with ID=006C decodes:
+      {"PARAM":"20;00","NAME":"Alecto V1","ID":"006C","TEMP":"00e5","HUM":38,"BAT":"LOW"}
+PASS: one delivered RF frame maximum per receiver loop.
+PASS: adaptive backlog stress: 7000 produced / 7000 consumed.
+PASS: overflow_reports=0 during backlog stress.
+PASS: recoveries=0 during backlog stress.
+PASS: backlog boosts=5, backlog_max=400 in deterministic ~111 s stress test.
+PASS: all 54 original RFLink plugin/config/old file hashes unchanged.
+PASS: previous startup/API/Wi-Fi gate, EV1527, idle-first-packet, OTA/reconnect and overflow-recovery host tests remain valid for this source tree.
+
+LIMIT: host simulation only. Physical ESP8266 + 433 MHz receiver + Wi-Fi behavior must be confirmed on hardware.

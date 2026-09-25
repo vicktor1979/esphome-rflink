@@ -3,8 +3,8 @@
 // The original ESP8266 pulse collection algorithm is retained. Additions:
 // pre-setup capture gate, pin-IRQ detach/reattach, ring reset, edge counter.
 // rxgate2: independently configurable high-frequency-loop request.
-// ISR/filter/timestamping/frame reconstruction remain upstream-compatible;
-// main-loop draining adds bounded backlog catch-up for high_frequency:false.
+// v0.1.9.1: adaptive, bounded scheduler boost when completed frames back up.
+// The ISR, filter, timestamping and one-frame-per-loop delivery are unchanged.
 #include "remote_receiver.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/helpers.h"
@@ -70,10 +70,71 @@ void RemoteReceiverComponent::reset_capture_state_() {
 }
 
 
+
+uint32_t RemoteReceiverComponent::completed_backlog_entries_() const {
+  const auto &s = this->store_;
+  const uint32_t read = s.buffer_read;
+  const uint32_t start = s.buffer_start;
+  if (start >= read) return start - read;
+  return s.buffer_size - read + start;
+}
+
+void RemoteReceiverComponent::stop_backlog_boost_(uint32_t now_ms) {
+  if (!this->backlog_boost_active_) return;
+  this->backlog_boost_active_ = false;
+  this->last_backlog_boost_stop_ms_ = now_ms;
+  if (!this->high_frequency_) this->high_freq_.stop();
+}
+
+void RemoteReceiverComponent::update_backlog_boost_(uint32_t now_ms) {
+  if (!this->capture_active_ || this->is_failed()) return;
+
+  const uint32_t backlog = this->completed_backlog_entries_();
+  if (backlog > this->max_completed_backlog_) this->max_completed_backlog_ = backlog;
+
+  // A permanently enabled high-frequency loop is still controlled only by the
+  // explicit YAML option. Adaptive boost is for high_frequency:false only.
+  if (this->high_frequency_) {
+    this->backlog_boost_active_ = false;
+    return;
+  }
+
+  uint32_t high_water = this->store_.buffer_size / 3U;
+  if (high_water < 64U) high_water = 64U;
+  if (high_water >= this->store_.buffer_size) high_water = this->store_.buffer_size - 1U;
+  uint32_t low_water = high_water / 3U;
+  if (low_water < 16U) low_water = 16U;
+  if (low_water >= high_water) low_water = high_water / 2U;
+
+  // Keep boosts intentionally short. The old always-fast mode could starve
+  // ESP8266 Wi-Fi; 8 ms bursts with at least 20 ms between bursts let the
+  // receiver catch up while retaining scheduler/Wi-Fi breathing room.
+  static constexpr uint32_t BOOST_MAX_MS = 8;
+  static constexpr uint32_t BOOST_COOLDOWN_MS = 20;
+
+  if (this->backlog_boost_active_) {
+    if (backlog <= low_water ||
+        static_cast<uint32_t>(now_ms - this->backlog_boost_started_ms_) >= BOOST_MAX_MS) {
+      this->stop_backlog_boost_(now_ms);
+    }
+    return;
+  }
+
+  const bool cooldown_done = this->last_backlog_boost_stop_ms_ == 0 ||
+                             static_cast<uint32_t>(now_ms - this->last_backlog_boost_stop_ms_) >= BOOST_COOLDOWN_MS;
+  if (backlog >= high_water && cooldown_done) {
+    this->backlog_boost_active_ = true;
+    this->backlog_boost_started_ms_ = now_ms;
+    ++this->backlog_boost_count_;
+    this->high_freq_.start();
+  }
+}
+
 void RemoteReceiverComponent::recover_capture_(const char *reason, bool log_warning) {
   if (!this->capture_ready_ || !this->capture_active_ || this->is_failed()) return;
   // The ring contents are already unusable after overflow/stall. Re-arm only
   // our GPIO interrupt; do not touch Wi-Fi/system interrupts or reallocate RAM.
+  this->stop_backlog_boost_(millis());
   this->pin_->detach_interrupt();
   this->reset_capture_state_();
   this->pin_->attach_interrupt(RemoteReceiverComponentStore::gpio_intr, &this->store_, gpio::INTERRUPT_ANY_EDGE);
@@ -119,6 +180,9 @@ void RemoteReceiverComponent::set_capture_enabled(bool enabled) {
   this->capture_requested_ = enabled;
   if (!this->capture_ready_ || this->is_failed() || enabled == this->capture_active_) return;
   if (enabled) {
+    this->backlog_boost_active_ = false;
+    this->backlog_boost_started_ms_ = 0;
+    this->last_backlog_boost_stop_ms_ = 0;
     this->reset_capture_state_();
     this->capture_active_ = true;
     this->pin_->attach_interrupt(RemoteReceiverComponentStore::gpio_intr, &this->store_, gpio::INTERRUPT_ANY_EDGE);
@@ -126,6 +190,7 @@ void RemoteReceiverComponent::set_capture_enabled(bool enabled) {
   } else {
     this->pin_->detach_interrupt();
     this->capture_active_ = false;
+    this->backlog_boost_active_ = false;
     this->high_freq_.stop();
     this->reset_capture_state_();
   }
@@ -138,8 +203,11 @@ void RemoteReceiverComponent::set_high_frequency(bool enabled) {
   if (this->high_frequency_ == enabled) return;
   this->high_frequency_ = enabled;
   if (this->capture_active_ && enabled) {
+    // Explicit fast mode supersedes an adaptive boost without toggling the
+    // requester off in between.
+    this->backlog_boost_active_ = false;
     this->high_freq_.start();
-  } else {
+  } else if (!this->backlog_boost_active_) {
     this->high_freq_.stop();
   }
   // No IRQ detach, buffer reset, pin-mode change or allocation here.
@@ -153,6 +221,7 @@ void RemoteReceiverComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "Remote Receiver rxgate2 (ESP8266 / based on 2026.9.0):");
   ESP_LOGCONFIG(TAG, "  Capture enabled: %s", this->capture_active_ ? "YES" : "NO");
   ESP_LOGCONFIG(TAG, "  High frequency configured: %s", this->high_frequency_ ? "YES" : "NO");
+  ESP_LOGCONFIG(TAG, "  Adaptive backlog boost: bounded 8 ms / 20 ms cooldown when high_frequency=false");
   ESP_LOGCONFIG(TAG, "  Buffer Size: %" PRIu32, this->buffer_size_);
   ESP_LOGCONFIG(TAG, "  Filter: %" PRIu32 " us; Idle: %" PRIu32 " us", this->filter_us_, this->idle_us_);
   LOG_PIN("  Pin: ", this->pin_);
@@ -180,83 +249,62 @@ void RemoteReceiverComponent::loop() {
     this->recover_capture_("stalled partial frame");
     return;
   }
-
-  // With high_frequency:false ESPHome may service component loops at roughly a
-  // 16 ms cadence. The upstream receiver consumes only one completed RF frame
-  // per loop; a noisy 433 MHz input that produces completed frames only a little
-  // faster than that can therefore fill the ring slowly (the field failure was
-  // reproducible at ~92 s with a 1200-entry buffer). Drain a small bounded batch
-  // of already-completed frames per scheduler turn. This raises burst capacity
-  // without restoring the always-fast loop that previously hurt ESP8266 Wi-Fi.
-  static constexpr uint8_t MAX_FRAMES_PER_LOOP = 4;
-  static constexpr uint32_t MAX_DRAIN_TIME_US = 6000;
-  const uint32_t drain_started_us = micros();
-  uint8_t drained_this_loop = 0;
-
-  while (drained_this_loop < MAX_FRAMES_PER_LOOP) {
-    // The first frame is always serviced. Before taking any additional queued
-    // frame, enforce the elapsed-work budget so a slow decoder/callback cannot
-    // turn backlog catch-up into another Wi-Fi starvation source.
-    if (drained_this_loop != 0 &&
-        static_cast<uint32_t>(micros() - drain_started_us) >= MAX_DRAIN_TIME_US)
-      break;
-
-    if (s.overflow) {
-      ++this->overflow_reports_;
-      ++this->overflow_log_pending_;
-      s.overflow = false;
-      const uint32_t overflow_now_ms = millis();
-      // A noisy/continuous RF source can overflow repeatedly. Logging every loop
-      // makes recovery worse on ESP8266, so keep the exact counter but aggregate
-      // warnings to at most one line per 5 seconds.
-      if (this->last_overflow_log_ms_ == 0 ||
-          static_cast<uint32_t>(overflow_now_ms - this->last_overflow_log_ms_) >= 5000) {
-        ESP_LOGW(TAG, "Buffer overflow (%lu since last log; total=%lu)",
-                 static_cast<unsigned long>(this->overflow_log_pending_),
-                 static_cast<unsigned long>(this->overflow_reports_));
-        this->overflow_log_pending_ = 0;
-        this->last_overflow_log_ms_ = overflow_now_ms;
-      }
-      // A ring overflow leaves the current packet undefined. Previously we only
-      // cleared the flag, so stale indices could take several later transmissions
-      // to converge. Re-arm immediately; this is the same cleanup users got from
-      // manually toggling capture, without reallocating the buffer.
-      this->recover_capture_("buffer overflow", false);
-      return;
+  if (s.overflow) {
+    ++this->overflow_reports_;
+    ++this->overflow_log_pending_;
+    s.overflow = false;
+    const uint32_t now_ms = millis();
+    // A noisy/continuous RF source can overflow repeatedly. Logging every loop
+    // makes recovery worse on ESP8266, so keep the exact counter but aggregate
+    // warnings to at most one line per 5 seconds.
+    if (this->last_overflow_log_ms_ == 0 ||
+        static_cast<uint32_t>(now_ms - this->last_overflow_log_ms_) >= 5000) {
+      ESP_LOGW(TAG, "Buffer overflow (%lu since last log; total=%lu)",
+               static_cast<unsigned long>(this->overflow_log_pending_),
+               static_cast<unsigned long>(this->overflow_reports_));
+      this->overflow_log_pending_ = 0;
+      this->last_overflow_log_ms_ = now_ms;
     }
-
-    uint32_t last_index = s.buffer_start;
-    if (last_index == s.buffer_read) {
-      InterruptLock lock;
-      if (s.buffer_read == s.buffer_start && s.buffer_write != s.buffer_start &&
-          micros() - s.prev_micros >= this->idle_us_) {
-        commit_value(&s, s.prev_micros, s.prev_level);
-        write_value(&s, s.idle_us, !s.commit_level);
-        last_index = s.buffer_start;
-      }
-    }
-    if (last_index == s.buffer_read) break;
-
-    uint32_t temp_read = s.buffer_read;
-    uint32_t reserve_size = 0;
-    while (temp_read != last_index && (uint32_t) std::abs(s.buffer[temp_read]) < this->idle_us_) {
-      reserve_size++;
-      temp_read++;
-      if (temp_read >= s.buffer_size) temp_read = 0;
-    }
-    this->temp_.clear();
-    this->temp_.reserve(reserve_size + 1);
-    for (uint32_t i = 0; i < reserve_size + 1; i++) {
-      this->temp_.push_back((int32_t) s.buffer[s.buffer_read++]);
-      if (s.buffer_read >= s.buffer_size) s.buffer_read = 0;
-    }
-    ++this->frame_count_;
-    ++drained_this_loop;
-    if (drained_this_loop > 1) ++this->extra_drained_frames_;
-    if (drained_this_loop > this->max_drain_batch_) this->max_drain_batch_ = drained_this_loop;
-    this->edge_activity_pending_ = false;
-    this->call_listeners_dumpers_();
+    // A ring overflow leaves the current packet undefined. Previously we only
+    // cleared the flag, so stale indices could take several later transmissions
+    // to converge. Re-arm immediately; this is the same cleanup users got from
+    // manually toggling capture, without reallocating the buffer.
+    this->recover_capture_("buffer overflow", false);
+    return;
   }
-}
 
+  // Preserve legacy RFLink timing: deliver at most one completed RF frame per
+  // receiver loop. If completed frames build up, temporarily ask ESPHome to
+  // schedule more loop turns instead of decoding several frames in one call.
+  this->update_backlog_boost_(now_ms);
+
+  uint32_t last_index = s.buffer_start;
+  if (last_index == s.buffer_read) {
+    InterruptLock lock;
+    if (s.buffer_read == s.buffer_start && s.buffer_write != s.buffer_start &&
+        micros() - s.prev_micros >= this->idle_us_) {
+      commit_value(&s, s.prev_micros, s.prev_level);
+      write_value(&s, s.idle_us, !s.commit_level);
+      last_index = s.buffer_start;
+    }
+  }
+  if (last_index == s.buffer_read) return;
+  uint32_t temp_read = s.buffer_read;
+  uint32_t reserve_size = 0;
+  while (temp_read != last_index && (uint32_t) std::abs(s.buffer[temp_read]) < this->idle_us_) {
+    reserve_size++;
+    temp_read++;
+    if (temp_read >= s.buffer_size) temp_read = 0;
+  }
+  this->temp_.clear();
+  this->temp_.reserve(reserve_size + 1);
+  for (uint32_t i = 0; i < reserve_size + 1; i++) {
+    this->temp_.push_back((int32_t) s.buffer[s.buffer_read++]);
+    if (s.buffer_read >= s.buffer_size) s.buffer_read = 0;
+  }
+  ++this->frame_count_;
+  this->edge_activity_pending_ = false;
+  this->call_listeners_dumpers_();
+  this->update_backlog_boost_(millis());
+}
 }  // namespace esphome::remote_receiver

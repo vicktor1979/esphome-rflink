@@ -1,6 +1,6 @@
 // Copyright (c) 2019 ESPHome. SPDX-License-Identifier: GPL-3.0-only
 // Derived from ESPHome 2026.9.0 remote_receiver.h. Modified 2026-09-23.
-// ESP8266-only diagnostic: pause capture IRQ + fast-loop request, not only decode.
+// ESP8266-only diagnostic: pause capture IRQ + bounded adaptive backlog scheduling.
 #pragma once
 #include "esphome/components/remote_base/remote_base.h"
 #include "esphome/core/component.h"
@@ -44,19 +44,25 @@ class RemoteReceiverComponent final : public remote_base::RemoteReceiverBase, pu
   bool is_capture_enabled() const { return this->capture_active_; }
   // Main-loop/setup context only. Does not detach IRQ or reset pulse buffers.
   void set_high_frequency(bool enabled);
-  bool is_high_frequency_requested() const { return this->capture_active_ && this->high_frequency_; }
+  bool is_high_frequency_requested() const {
+    return this->capture_active_ && (this->high_frequency_ || this->backlog_boost_active_);
+  }
   uint32_t get_loop_calls() const { return this->loop_calls_; }
   // Counts overflow flags observed by loop(), not lost edges or lost packets.
   uint32_t get_overflow_reports() const { return this->overflow_reports_; }
   uint32_t get_edge_count() const { return this->store_.edge_count; }
   uint32_t get_frame_count() const { return this->frame_count_; }
   uint32_t get_recovery_count() const { return this->recovery_count_; }
-  uint32_t get_extra_drained_frames() const { return this->extra_drained_frames_; }
-  uint8_t get_max_drain_batch() const { return this->max_drain_batch_; }
+  uint32_t get_backlog_boost_count() const { return this->backlog_boost_count_; }
+  uint32_t get_max_completed_backlog() const { return this->max_completed_backlog_; }
+  bool is_backlog_boost_active() const { return this->backlog_boost_active_; }
 
  protected:
   void reset_capture_state_();  // call ONLY while our pin interrupt is detached
   void recover_capture_(const char *reason, bool log_warning = true);
+  uint32_t completed_backlog_entries_() const;
+  void update_backlog_boost_(uint32_t now_ms);
+  void stop_backlog_boost_(uint32_t now_ms);
   RemoteReceiverComponentStore store_;
   HighFrequencyLoopRequester high_freq_;
   uint32_t buffer_size_{1000};
@@ -69,8 +75,11 @@ class RemoteReceiverComponent final : public remote_base::RemoteReceiverBase, pu
   uint32_t last_overflow_log_ms_{0};
   uint32_t frame_count_{0};
   uint32_t recovery_count_{0};
-  uint32_t extra_drained_frames_{0};
-  uint8_t max_drain_batch_{0};
+  bool backlog_boost_active_{false};
+  uint32_t backlog_boost_count_{0};
+  uint32_t max_completed_backlog_{0};
+  uint32_t backlog_boost_started_ms_{0};
+  uint32_t last_backlog_boost_stop_ms_{0};
   uint32_t last_recovery_log_ms_{0};
   uint32_t last_edge_count_seen_{0};
   uint32_t edge_activity_since_ms_{0};
