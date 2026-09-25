@@ -1,11 +1,21 @@
-# Kiegészítő csomag a már működő ESPHome–RFLink projekthez.
-# Nem önálló készülékkonfiguráció.
-# Csak NAME="Alecto V1" és ID="006C" üzenetek frissítik.
-# A PARAM változó csomagsorszám, ezért nem szűrünk rá.
-# TEMP: RFLink hexadecimális, előjelbites, tizedfokos formátum.
-# BAT: LOW = alacsony elem; OK = rendben. Nem százalékos töltöttség.
-# Az utolsó érvényes értéket korlátlan ideig megtartja a következő érvényes mérésig.
-# Az entity_category: "" miatt nem diagnosztikai kategóriájúak.
+# Alecto V1 package for the RFLink ESPHome bridge.
+#
+# IMPORTANT:
+# Plugin_030 calls the transmitted sensor identifier a Rolling Code. After a
+# battery replacement/reset the ID can change (for example from 006C to another
+# four-digit value). Therefore this package intentionally matches NAME="Alecto V1"
+# and does NOT require a fixed ID anymore.
+#
+# Existing entity names keep "006C" for Home Assistant compatibility, while the
+# new diagnostic text sensor shows the currently received RF ID.
+# PARAM is the RFLink packet sequence and is intentionally ignored.
+# TEMP: hexadecimal sign-magnitude tenths used by RFLink.
+# HUM: decimal percentage.
+# BAT: LOW = low battery; OK = battery OK.
+# Missing fields do not clear previous values because an Alecto V1 station may
+# send different packet types separately.
+#
+# Requirement: RFLink Plugin 030 must be enabled at runtime.
 
 json:
 
@@ -22,6 +32,18 @@ sensor:
     accuracy_decimals: 1
     update_interval: never
 
+  - platform: template
+    id: alecto_006c_hum
+    name: "Alecto 006C páratartalom"
+    icon: mdi:water-percent
+    internal: false
+    entity_category: ""
+    unit_of_measurement: "%"
+    device_class: humidity
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
 binary_sensor:
   - platform: template
     id: alecto_006c_bat
@@ -29,6 +51,15 @@ binary_sensor:
     device_class: battery
     internal: false
     entity_category: ""
+
+text_sensor:
+  - platform: template
+    id: alecto_006c_current_id
+    name: "Alecto V1 aktuális RF ID"
+    icon: mdi:identifier
+    internal: false
+    entity_category: diagnostic
+    update_interval: never
 
 script:
   - id: alecto_006c_process
@@ -40,12 +71,31 @@ script:
       - lambda: |-
           const bool valid = json::parse_json(message, [&](JsonObject root) -> bool {
             namespace data = esphome::rflink_data;
+
             const std::string protocol = root["NAME"] | "";
+            if (protocol != "Alecto V1") return true;
+
             const std::string device = root["ID"] | "";
-            if (protocol != "Alecto V1" || device != "006C") return true;
+            if (device.empty()) return true;
+
+            // Plugin_030 uses a rolling code. Do not lock the device to 006C:
+            // battery replacement/reset may legitimately change this ID.
+            static std::string last_device;
+            if (last_device != device) {
+              if (last_device.empty()) {
+                ESP_LOGI("rflink.alecto", "Alecto V1 RF ID: %s", device.c_str());
+              } else {
+                ESP_LOGI("rflink.alecto", "Alecto V1 RF ID changed: %s -> %s",
+                         last_device.c_str(), device.c_str());
+              }
+              last_device = device;
+            }
+            data::publish_text(id(alecto_006c_current_id), device);
 
             data::publish_number(
                 id(alecto_006c_temp), data::number(root, data::TEMP), false);
+            data::publish_number(
+                id(alecto_006c_hum), data::number(root, data::HUM), false);
 
             const std::string battery = root["BAT"] | "";
             data::publish_binary(
@@ -54,10 +104,10 @@ script:
             return true;
           });
           if (!valid)
-            ESP_LOGW("rflink.device", "Hibas JSON az Alecto 006C feldolgozasakor.");
+            ESP_LOGW("rflink.device", "Hibas JSON az Alecto V1 feldolgozasakor.");
 
-# Az on_message LISTA hozzáfűződik a fő YAML meglévő listájához.
-# Az eredeti rflink_api_process hívást NE töröld.
+# The on_message list is appended to the main YAML rflink.on_message handlers.
+# Keep the existing rflink_api_process handler in the main configuration.
 rflink:
   on_message:
     - then:

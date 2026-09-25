@@ -1,26 +1,22 @@
-ESPHome RFLink v0.1.9.1 - Alecto/backlog javitas
+RFLink ESPHome v0.1.9.2 - Alecto rolling-ID fix
 
-EZ NEM PATCH.
-A ZIP a tenylegesen modositott, feltoltesre kesz allomanyokat tartalmazza.
+Copy the contents of this ZIP over the repository root.
+It contains the current v0.1.9.1 receiver/backlog fixes plus the updated
+packages/rflink-alecto-006c.yaml.
 
-Hasznalat:
-1. Csomagold ki a GitHub RFLink repository gyokerbe.
-2. Engedd a harom fajl felulirasat:
-   components/remote_receiver/remote_receiver.cpp
-   components/remote_receiver/remote_receiver.h
-   components/rflink/rflink.cpp
-3. Az RFLink/Plugins konyvtarat NE modositsd.
-4. ESPHome-ban forditsd ujra es toltsd fel a firmware-t.
+Why the Alecto package changed:
+RFLink Plugin_030 treats the Alecto V1 sensor ID as a rolling code. A battery
+replacement/reset can change the previous 006C ID. The old package silently
+ignored every Alecto V1 frame whose ID was not exactly 006C.
 
-Fontos:
-- remote_receiver high_frequency: false maradjon.
-- A YAML interval-alapu Wi-Fi/API/capture/decode kapu tovabbra sem kell;
-  ezt az RFLink komponens auto_start logikaja kezeli.
+The updated package:
+- accepts any decoded NAME="Alecto V1" ID;
+- preserves the existing Alecto 006C temperature/battery entity names;
+- adds humidity;
+- adds "Alecto V1 aktuális RF ID" diagnostic text sensor;
+- logs only when the received Alecto RF ID changes;
+- does not modify RFLink/Plugins/Plugin_030.c.
 
-Mi valtozott az elozo rx-backlog-fix verzihoz kepest:
-- kivettem a tobb RF frame feldolgozasat egyetlen receiver loop() alatt;
-- ujra maximum 1 RF frame kerul a legacy RFLink decoderhez egy loop() alatt;
-- backlog eseten rovid adaptiv scheduler-gyorsitas indul, nem multi-frame decode;
-- boost legfeljebb 8 ms, utana legalabb 20 ms cooldown;
-- buffer overflow es 2.5 s beragadt resz-frame self-heal megmaradt;
-- diagnosztika: backlog_boosts, backlog_max.
+IMPORTANT: Runtime Plugin 030 still has to be ON.
+If the RFLink active plugins entity does not contain 030, use the existing
+"RF pluginok alaphelyzet" button or turn on the Plugin 030 switch.
