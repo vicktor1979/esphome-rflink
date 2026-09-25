@@ -48,6 +48,9 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   void add_on_decode_state_callback(std::function<void(bool)> &&callback) {
     this->decode_state_callbacks_.add(std::move(callback));
   }
+  void add_on_message_observer(std::function<void(const std::string &)> &&callback) {
+    this->message_observers_.add(std::move(callback));
+  }
   void add_on_message_callback(std::function<void(std::string)> &&callback) {
     this->callbacks_.add(std::move(callback));
   }
@@ -68,7 +71,10 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   sensor::Sensor *unsupported_pulse_count_sensor_{nullptr};
   CallbackManager<void(uint16_t, uint32_t)> frame_callbacks_;
   CallbackManager<void(bool)> decode_state_callbacks_;
+  CallbackManager<void(const std::string &)> message_observers_;
   CallbackManager<void(std::string)> callbacks_;
+  // Reused between receive calls to avoid heap churn on every decoded packet.
+  std::string message_buffer_;
 };
 
 class RFLinkPluginSwitch : public switch_::Switch, public Component {

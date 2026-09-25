@@ -82,7 +82,7 @@ A saját, meglévő ESPHome-eszköz YAML-jában:
 
 ```yaml
 packages:
-  rflink_api: github://YOUR_GITHUB_USER/esphome-rflink/packages/rflink-ha-api.yaml@main
+  rflink_api: github://YOUR_GITHUB_USER/esphome-rflink/packages/rflink-ha-api.yaml@v0.1.9
 ```
 
 A felhasználónév, repónév és ág a saját repódhoz igazítandó. A korábbi

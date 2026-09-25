@@ -66,11 +66,11 @@ def main():
     except ValueError: pass
     else: raise AssertionError('Missing plugin did not produce an error')
     passed('all=48; configured=47; the difference is Plugin_083; explicit selection and missing-ID validation.')
-    main_yaml=load(repo/'rflink-all-plugins-proba.yaml')
+    main_yaml=load(repo/'examples/rflink.yaml')
     gesture=load(repo/'packages/rflink-ha-gestures.yaml');fields=load(repo/'packages/rflink-ha-all-data.yaml')
     assert main_yaml['rflink']['rx_plugins']=='all'
     assert main_yaml['remote_receiver']['pin']['number']=='GPIO5'
-    assert main_yaml['remote_receiver']['buffer_size']=='1000b'
+    assert main_yaml['remote_receiver']['buffer_size']=='1200b'
     assert main_yaml['remote_receiver']['filter']=='100us' and main_yaml['remote_receiver']['idle']=='5ms'
     assert 'mqtt' not in main_yaml and 'dump' not in main_yaml['remote_receiver']
     ids=[]

@@ -14,11 +14,14 @@ void RFLinkComponent::setup() {
   // runtime states. Without plugin_switches, keep the pre-v0.1.8 behaviour:
   // all ordinary compiled decoders start enabled (254 debug stays OFF).
   ::rflink_legacy::reset(!this->plugin_switch_mode_);
+  // Typical RFLink packets are well below this size. Reserve once so the hot
+  // decode/callback path does not repeatedly grow the std::string heap buffer.
+  this->message_buffer_.reserve(256);
   this->publish_active_plugins();
 }
 
 void RFLinkComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.8.2 (Plugin 254 HA diagnostics; managed runtime gates):");
+  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.9 (optimized active dispatch; managed runtime gates):");
   ESP_LOGCONFIG(TAG, "  Plugin profile: %s", rflink_legacy::plugin_profile());
   ESP_LOGCONFIG(TAG, "  RX plugins compiled: %u", static_cast<unsigned>(::rflink_legacy::plugin_count()));
   ESP_LOGCONFIG(TAG, "  RX plugins enabled: %u", static_cast<unsigned>(::rflink_legacy::enabled_plugin_count()));
@@ -85,11 +88,11 @@ bool RFLinkComponent::on_receive(remote_base::RemoteReceiveData data) {
     return false;
   }
   ++this->decode_calls_;
-  std::string json;
+  this->message_buffer_.clear();
   const uint32_t decode_start = micros();
   ::rflink_legacy::FrameObservation observation;
   ::rflink_legacy::UnsupportedObservation unsupported;
-  const bool recognized = ::rflink_legacy::decode(data.get_raw_data(), json, &observation, &unsupported);
+  const bool recognized = ::rflink_legacy::decode(data.get_raw_data(), this->message_buffer_, &observation, &unsupported);
   const uint32_t decode_us = static_cast<uint32_t>(micros() - decode_start);
   if (decode_us > this->max_decode_us_) this->max_decode_us_ = decode_us;
   if (observation.valid) {
@@ -108,11 +111,14 @@ bool RFLinkComponent::on_receive(remote_base::RemoteReceiveData data) {
       ESP_LOGD(TAG, "Plugin 254 unsupported RF: %s%s", unsupported.summary.c_str(),
                unsupported.truncated ? " [HA summary truncated]" : "");
   }
-  if (!json.empty()) {
+  if (!this->message_buffer_.empty()) {
     ++this->message_count_;
-    if (this->log_messages_) ESP_LOGD(TAG, "%s", json.c_str());
+    if (this->log_messages_) ESP_LOGD(TAG, "%s", this->message_buffer_.c_str());
     const uint32_t callback_start = micros();
-    this->callbacks_.call(json);
+    // Internal observers get a const reference; user automations keep the
+    // existing by-value ABI and therefore pay a copy only when configured.
+    this->message_observers_.call(this->message_buffer_);
+    this->callbacks_.call(this->message_buffer_);
     const uint32_t callback_us = static_cast<uint32_t>(micros() - callback_start);
     if (callback_us > this->max_callback_us_) this->max_callback_us_ = callback_us;
   }

@@ -1,4 +1,4 @@
-"""RFLink configurable event hub and bounded, opt-in learning diagnostics (v0.1.6)."""
+"""RFLink configurable event hub and bounded, opt-in learning diagnostics (v0.1.9)."""
 from esphome import automation
 import esphome.codegen as cg
 import esphome.config_validation as cv

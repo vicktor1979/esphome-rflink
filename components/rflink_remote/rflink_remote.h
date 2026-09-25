@@ -1,5 +1,5 @@
 #pragma once
-// v0.1.6: presentation/routing only. No RFLink plugin, decoder or receiver edits.
+// v0.1.9: optimized routing, compact learning display and fast single-click.
 #include <array>
 #include <cstdint>
 #include <string>
@@ -22,8 +22,10 @@ struct Match {
   }
   static Match ev1527(uint32_t code);
   bool valid() const;
-  // A compact, self-contained match. Empty result means too long for a HA state.
+  // Machine-readable form used in logs/debugging. Empty means too long.
   std::string json(const char *mode, const char *gesture = nullptr, uint32_t seq = 0) const;
+  // Short HA-state form that does not overflow entity rows.
+  std::string compact(const char *mode, const char *gesture = nullptr) const;
 };
 
 class RFRemoteEvent : public event::Event {
@@ -90,6 +92,10 @@ class RFRemoteHub : public Component {
   void publish_gesture_(const Match &key, const char *type);
   rflink::RFLinkComponent *parent_{nullptr};
   std::vector<RFRemoteEvent *> remotes_;
+  // Routing lists are built once at setup so an accepted EV1527 frame never
+  // scans message-only bindings, and parsed messages never scan gesture-only bindings.
+  std::vector<RFRemoteEvent *> gesture_remotes_;
+  std::vector<RFRemoteEvent *> message_remotes_;
   // Allocated ONCE at setup; never grows in response to RF traffic.
   std::vector<LearningSlot> learning_slots_;
   Timing timing_{};

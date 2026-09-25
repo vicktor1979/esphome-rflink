@@ -2,10 +2,12 @@
 
 **RF-jelek vétele változatlan RFLink-pluginokkal, natív Home Assistant-entitások, YAML-ban megadott távirányítók, gesztusfelismerés és tanuló nézet.**
 
-Dokumentáció: **2026. szeptember 23.**  
-Leírt összeállítás: **RFLink-motor v0.1.5 + ESP8266-vevő rxgate2 + holdfix1 + rflink_remote v0.1.6**.
+Dokumentáció: **2026. szeptember 25.**  
+Jelenlegi stabil fejlesztési alap: **v0.1.9 · ESP8266 rxgate2 · runtime plugin gate · rflink_remote**.
 
 Ez a README a projekt jelenlegi, közösen kipróbált felépítését foglalja össze. **Nem új firmware-verzió és nem teljes forráscsomag:** a mellékelt konfigurációs példák a GitHub-repóban már meglévő komponenseket használják. A dokumentációfrissítés nem módosítja a rádiós dekódereket, a vételi időzítéseket vagy a gesztusfelismerő C++ kódot.
+
+A **v0.1.9** fő célja a gyorsabb, kiszámíthatóbb vételi út: csak az aktív dekódereket járja be, az extended előfeldolgozás csak akkor fut, ha kell, a single-click pedig nem vár fölöslegesen multi-click időablakra. A Home Assistantban megjelenő tanuló/utolsó RF szövegek rövidek; a teljes JSON hibakereséshez továbbra is a naplóban elérhető. A fő példákban a részletes RF üzenetnapló alapból ki van kapcsolva a kisebb futásidejű terhelésért; szükség esetén a **RFLink részletes napló** kapcsolóval ideiglenesen bekapcsolható.
 
 Az új, felhasználói felületen használt kapcsolónév: **RFLink figyelés**. A korábbi neve **RFLink dekódolás próba** volt. Meglévő HA-entitás átnevezéséhez először olvasd el a [névkezelési részt](#4-a-figyelési-kapcsoló-átnevezése).
 
@@ -62,12 +64,12 @@ A különböző naplósorok eltérő verziói szándékosak: nem minden javítá
 
 | Rész | Jelenlegi alap | Feladat |
 |---|---|---|
-| `components/rflink` | v0.1.5 | Pluginbetöltés, JSON-formázás, dekóderkapcsolás, EV1527-keretmegfigyelés |
+| `components/rflink` | v0.1.9 | Aktív dekóder-dispatch, JSON-formázás, runtime plugin gate, EV1527-keretmegfigyelés |
 | `components/remote_receiver` | rxgate2 | ESP8266-specifikus vételkapcsolás; kikapcsolható gyorsított főciklus |
 | `rflink_gestures.h` | holdfix1 | Rövid nyomások, többkattintás, tartás és kimaradástűrés |
-| `components/rflink_remote` | v0.1.6 | YAML-os távirányító-entitások és időkorlátos tanulás |
-| `packages/rflink-ha-data-only.yaml` | v0.1.6 | Minden korábban definiált adatmező, beégetett távirányítólista nélkül |
-| Fő készülék-YAML | v0.1.6-ra épül | API utáni indulás, kapcsolók, tanulás és saját távirányítók |
+| `components/rflink_remote` | v0.1.9 | YAML-os távirányító-entitások, gyors single-click és kompakt tanulás |
+| `packages/rflink-ha-data-only.yaml` | v0.1.9 | Adatmezők és kompakt legutóbbi RF-üzenet, beégetett távirányítólista nélkül |
+| Fő készülék-YAML | v0.1.9 | API utáni indulás, runtime plugin kapcsolók, tanulás, diagnosztikai segédgombok |
 
 A feltöltött hardveres naplókban **ESPHome 2026.9.0**, **Home Assistant 2026.9.3** és `nodemcuv2` szerepelt. Ez az összeállítás dokumentált kiindulópontja, **nem általános kompatibilitási ígéret minden későbbi kiadáshoz**.
 
@@ -119,7 +121,7 @@ tools/
   make_rf_device.py                # a korábbi generátor változatlan másolata
 ```
 
-A `.ci/`, `.github/` és `tests/` könyvtárak a korábbi tesztcsomagok opcionális részei. Nem szükségesek az eszköz hétköznapi működéséhez. A korábbi CI-előkészítő a régi `rflink-yaml-tanulas-proba.yaml` fájlnevet keresi: ezt ne töröld átnevezés címén, amíg a munkafolyamatot nem igazítottad hozzá.
+A `.ci/`, `.github/` és `tests/` könyvtárak fejlesztési/ellenőrzési célúak; az eszköz hétköznapi futásához nem szükségesek. A v0.1.9 tesztjei már a rendezett `examples/` struktúrát használják.
 
 A saját valódi `secrets.yaml` **az ESPHome konfigurációs környezetében maradjon**, ne kerüljön nyilvános repóba. A dokumentációs ZIP nem tartalmaz valódi jelszót, firmware-binárist vagy komponenskód-cserét.
 
@@ -202,7 +204,7 @@ A fő mintában az `on_raw` csak egy memóriabeli csomagszámlálót növel. **N
 
 Kiindulásként a már működő repó és a hozzá tartozó mentett YAML szükséges. Az új teljes példa: [examples/rflink.yaml](examples/rflink.yaml).
 
-**Meglévő készüléknél ne írj felül vakon saját távirányítókat, hálózati beállításokat vagy egyedi automatizmusokat.** Az új minta tartalmazza a korábban kért konyhai lámpavezérlést; egy általános vevőhöz ez csak példa, másik lámpához módosítandó.
+**Meglévő készüléknél ne írj felül vakon saját távirányítókat, hálózati beállításokat vagy egyedi automatizmusokat.** A fő példák nem tartalmaznak konkrét saját RF ID-t vagy Home Assistant lámpaazonosítót; ezekhez az `examples/fragments/` mintákat használd.
 
 A közös forrásbetöltés:
 
@@ -210,15 +212,15 @@ A közös forrásbetöltés:
 packages:
   rflink_api:
     url: https://github.com/vicktor1979/esphome-rflink
-    ref: main
-    refresh: 0s
+    ref: v0.1.9
+    refresh: 5min
     files:
       - packages/rflink-ha-data-only.yaml
 
 external_components:
-  - source: github://vicktor1979/esphome-rflink@main
+  - source: github://vicktor1979/esphome-rflink@v0.1.9
     components: [rflink, remote_receiver, rflink_remote]
-    refresh: 0s
+    refresh: 5min
 ```
 
 A `packages` a YAML-entitásokat/feldolgozást, az `external_components` a külső Python/C++ komponenseket tölti be. Mindkettő kell. A repó gyökerében közvetlenül legyen `components/` és `RFLink/`, ne egy újabb becsomagolt almappában.
@@ -715,6 +717,11 @@ Sikeres feltöltés után az 1–2 perces megfigyelés gyakorlati első próba, 
 
 ## 17. Naplózás és hibakeresés
 
+### Alecto V1: látszó RF jel, de nincs stabil dekódolás
+
+Ha egy korábban működő Alecto V1/Plugin 030 eszköz hirtelen csak szabálytalan impulzussorokat ad, az elemet is ellenőrizd. A projekt hardveres tesztjében gyenge elemmel még volt rádiós aktivitás, de nem állt össze stabilan érvényes keretté; elemcsere után az Alecto 006C adatai ismét rendesen érkeztek. Emiatt ehhez az esethez nem került lazább Plugin 030/framing kerülőmegoldás a v0.1.9-be.
+
+
 ### Elvárt verzió- és állapotjelzések
 
 ```text
@@ -722,7 +729,7 @@ RFLink RX compatibility bridge v0.1.5 (...)
 RX plugins compiled: 48
 Remote Receiver rxgate2 (ESP8266 / based on 2026.9.0)
 High frequency configured: NO
-[rflink.remote]: v0.1.6: YAML-configured remotes; holdfix1 unchanged; learning slots=4
+[rflink.remote]: v0.1.9: YAML-configured remotes; fast single-click; compact learning; slots=4
 ```
 
 Megfelelő HA-kapcsolat után:

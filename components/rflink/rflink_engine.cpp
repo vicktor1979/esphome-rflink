@@ -155,6 +155,33 @@ RFLINK_DEC_DISPLAY(METER) RFLINK_DEC_DISPLAY(VOLT)
 #include "rflink_vendor/7_Utils.cpp.inc"
 #include "rflink_vendor/registry.inc"
 
+namespace {
+constexpr size_t LEGACY_PLUGIN_COUNT = sizeof(RX_PLUGINS) / sizeof(RX_PLUGINS[0]);
+static uint8_t active_legacy_indices[LEGACY_PLUGIN_COUNT]{};
+static uint8_t active_legacy_count = 0;
+#if RFLINK_PROFILE_EXTENDED
+constexpr size_t EXTENSION_TABLE_COUNT = sizeof(EXT_PLUGINS) / sizeof(EXT_PLUGINS[0]);
+static uint8_t active_extension_indices[EXTENSION_TABLE_COUNT]{};
+static uint8_t active_extension_count = 0;
+#endif
+
+void rebuild_active_plugin_cache() {
+  active_legacy_count = 0;
+  for (size_t i = 0; i < LEGACY_PLUGIN_COUNT; ++i) {
+    if (mask_get(static_cast<uint16_t>(RX_PLUGINS[i].id)))
+      active_legacy_indices[active_legacy_count++] = static_cast<uint8_t>(i);
+  }
+#if RFLINK_PROFILE_EXTENDED
+  active_extension_count = 0;
+  for (size_t i = 0; i < EXTENSION_TABLE_COUNT; ++i) {
+    if (EXT_PLUGINS[i].decode == nullptr) break;
+    if (mask_get(static_cast<uint16_t>(EXT_PLUGINS[i].id)))
+      active_extension_indices[active_extension_count++] = static_cast<uint8_t>(i);
+  }
+#endif
+}
+}  // namespace
+
 void reset(bool enable_all_compiled) {
   RawSignal = RawSignalStruct{};
   for (auto &word : plugin_enabled_mask) word = 0;
@@ -181,6 +208,7 @@ void reset(bool enable_all_compiled) {
   SignalCRC = SignalCRC_1 = RepeatingTimer = 0;
   SignalHash = 0; SignalHashPrevious = 255;
   sequence = 0; clear_message(); output.reserve(256);
+  rebuild_active_plugin_cache();
 }
 size_t plugin_count() { return RFLINK_TOTAL_PLUGINS; }
 const char *plugin_profile() { return RFLINK_PLUGIN_PROFILE; }
@@ -207,6 +235,7 @@ bool set_plugin_enabled(uint16_t plugin_id, bool enabled) {
     RFUDebug = enabled;
     QRFUDebug = false;
   }
+  rebuild_active_plugin_cache();
   return true;
 }
 
@@ -237,17 +266,21 @@ bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObserva
   json.clear(); clear_message(); RawSignal = RawSignalStruct{};
   if (timings.empty()) return false;
 #if RFLINK_PROFILE_EXTENDED
-  const rf_ext::Pulses pulses(timings);
-  if (!pulses.valid) return false;
-  for (const auto &extension : EXT_PLUGINS) {
-    if (extension.decode == nullptr) break;
-    if (!mask_get(static_cast<uint16_t>(extension.id))) continue;
-    if (extension.decode(pulses)) {
-      if (finished && !overflow) json = output;
-      return true;
+  // Most installations use only legacy decoders at runtime. Avoid validating
+  // and walking the complete microsecond pulse view when no extension decoder
+  // is enabled. Runtime switch changes rebuild this tiny active-index cache.
+  if (active_extension_count != 0) {
+    const rf_ext::Pulses pulses(timings);
+    if (!pulses.valid) return false;
+    for (size_t active = 0; active < active_extension_count; ++active) {
+      const auto &extension = EXT_PLUGINS[active_extension_indices[active]];
+      if (extension.decode(pulses)) {
+        if (finished && !overflow) json = output;
+        return true;
+      }
     }
+    clear_message();
   }
-  clear_message();
 #endif
   size_t first = 0, end = timings.size();
   // ESPHome timings: positive mark, negative space. RFLink starts at a mark.
@@ -277,9 +310,11 @@ bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObserva
   if (append_timeout) RawSignal.Pulses[dest++] = SIGNAL_END_TIMEOUT_US / RAWSIGNAL_SAMPLE_RATE;
   RawSignal.Number = static_cast<int>(dest - 1);
   // index 0 is a plugin marker, and Number+1 remains the original zero sentinel.
-  for (size_t index = 0; index < sizeof(RX_PLUGINS)/sizeof(RX_PLUGINS[0]); ++index) {
-    if (!mask_get(static_cast<uint16_t>(RX_PLUGINS[index].id))) continue;
+  for (size_t active = 0; active < active_legacy_count; ++active) {
+    const size_t index = active_legacy_indices[active];
     if (short_debug_only && RX_PLUGINS[index].id != 254) continue;
+    // Keep SignalHash tied to the original registry index, not the compact
+    // active-list index, preserving legacy repeat/hash behaviour.
     SignalHash = static_cast<byte>(index);
     // Plugin 254 clears RawSignal.Number before returning. Preserve the count
     // so a bounded copy can be published to HA after the fallback accepts it.

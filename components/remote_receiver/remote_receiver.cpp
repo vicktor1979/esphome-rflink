@@ -139,8 +139,20 @@ void RemoteReceiverComponent::loop() {
   auto &s = this->store_;
   if (s.overflow) {
     ++this->overflow_reports_;
-    ESP_LOGW(TAG, "Buffer overflow");
+    ++this->overflow_log_pending_;
     s.overflow = false;
+    const uint32_t now_ms = millis();
+    // A noisy/continuous RF source can overflow repeatedly. Logging every loop
+    // makes recovery worse on ESP8266, so keep the exact counter but aggregate
+    // warnings to at most one line per 5 seconds.
+    if (this->last_overflow_log_ms_ == 0 ||
+        static_cast<uint32_t>(now_ms - this->last_overflow_log_ms_) >= 5000) {
+      ESP_LOGW(TAG, "Buffer overflow (%lu since last log; total=%lu)",
+               static_cast<unsigned long>(this->overflow_log_pending_),
+               static_cast<unsigned long>(this->overflow_reports_));
+      this->overflow_log_pending_ = 0;
+      this->last_overflow_log_ms_ = now_ms;
+    }
   }
   uint32_t last_index = s.buffer_start;
   if (last_index == s.buffer_read) {

@@ -19,6 +19,12 @@ static uint32_t event_bit(const char *type) {
     if (std::strcmp(TYPES[i], type) == 0) return uint32_t{1} << i;
   return 0;
 }
+static uint32_t multi_click_event_mask() {
+  return event_bit("double") | event_bit("triple") | event_bit("click_4") |
+         event_bit("click_5") | event_bit("click_6") | event_bit("click_7") |
+         event_bit("click_8") | event_bit("click_9") | event_bit("click_10") |
+         event_bit("multi_overflow");
+}
 static Timing make_timing(uint32_t release, uint32_t held_release, uint32_t fresh,
                           uint32_t multi, uint32_t hold, uint32_t repeat, uint32_t maximum) {
   Timing t;
@@ -63,6 +69,18 @@ std::string Match::json(const char *mode, const char *gesture, uint32_t seq) con
   if (out.size() > 250) return {};
   return out;
 }
+std::string Match::compact(const char *mode, const char *gesture) const {
+  if (!this->valid()) return {};
+  std::string out;
+  out.reserve(96);
+  out += this->protocol;
+  out += " · "; out += this->rf_id;
+  if (!this->button.empty()) { out += " · "; out += this->button; }
+  if (!this->command.empty()) { out += " · "; out += this->command; }
+  if (gesture != nullptr && *gesture != '\0') { out += " · "; out += gesture; }
+  else if (mode != nullptr && *mode != '\0') { out += " · "; out += mode; }
+  return out.size() <= 160 ? out : std::string{};
+}
 void RFRemoteEvent::set_timing_values(uint32_t r, uint32_t hr, uint32_t f,
                                      uint32_t m, uint32_t h, uint32_t p, uint32_t maximum) {
   this->timing_ = make_timing(r, hr, f, m, h, p, maximum); this->custom_timing_ = true;
@@ -73,6 +91,7 @@ void RFRemoteEvent::initialize(const Timing &fallback) {
   if (this->gestures_) {
     this->valid_ = this->valid_ && this->match_.protocol == "EV1527" && this->match_.command == "ON" &&
       this->state_.configure_ev1527(this->match_.rf_id.c_str(), this->match_.button.c_str(), this->timing_);
+    this->state_.set_immediate_single((this->event_mask_ & multi_click_event_mask()) == 0);
     this->state_.set_callback([this](const Gesture &e) { this->handle_gesture_(e); });
     if (this->pressed_sensor_ != nullptr) this->pressed_sensor_->publish_state(false);
   }
@@ -125,10 +144,17 @@ void RFRemoteHub::setup() {
   if (this->parent_ == nullptr || !this->timing_.valid()) {
     ESP_LOGE(TAG, "Missing RFLink parent or invalid timing"); this->mark_failed(); return;
   }
+  this->gesture_remotes_.clear();
+  this->message_remotes_.clear();
+  this->gesture_remotes_.reserve(this->remotes_.size());
+  this->message_remotes_.reserve(this->remotes_.size());
   for (auto *entry : this->remotes_) {
     entry->initialize(this->timing_);
-    if (!entry->gestures()) this->has_message_remotes_ = true;
+    if (!entry->valid()) continue;
+    if (entry->gestures()) this->gesture_remotes_.push_back(entry);
+    else this->message_remotes_.push_back(entry);
   }
+  this->has_message_remotes_ = !this->message_remotes_.empty();
   this->learning_slots_.resize(this->max_signals_);
   for (auto &slot : this->learning_slots_) {
     LearningSlot *p = &slot;
@@ -138,7 +164,7 @@ void RFRemoteHub::setup() {
   this->parent_->add_on_frame_callback([this](uint16_t plugin, uint32_t code) {
     this->observe_frame(plugin, code, millis());
   });
-  this->parent_->add_on_message_callback([this](std::string message) {
+  this->parent_->add_on_message_observer([this](const std::string &message) {
     this->observe_message(message, millis());
   });
   this->parent_->add_on_decode_state_callback([this](bool enabled) {
@@ -146,7 +172,7 @@ void RFRemoteHub::setup() {
   });
 }
 void RFRemoteHub::dump_config() {
-  ESP_LOGCONFIG(TAG, "v0.1.6: YAML-configured remotes; holdfix1 unchanged; learning slots=%u",
+  ESP_LOGCONFIG(TAG, "v0.1.9: YAML-configured remotes; fast single-click; compact learning; slots=%u",
                 static_cast<unsigned>(this->learning_slots_.size()));
   ESP_LOGCONFIG(TAG, "Configured event entities: %u; learning: %s (timeout %lu ms)",
                 static_cast<unsigned>(this->remotes_.size()), this->learning_enabled_ ? "ON" : "OFF",
@@ -161,12 +187,13 @@ void RFRemoteHub::tick(uint32_t now) {
   if (this->learning_enabled_ && static_cast<uint32_t>(now - this->learning_started_) >= this->learning_duration_)
     this->set_learning_enabled(false);
   if (this->parent_ == nullptr || !this->parent_->is_decode_enabled()) { this->cancel_all_(now); return; }
-  for (auto *entry : this->remotes_) entry->tick(now);
+  for (auto *entry : this->gesture_remotes_) entry->tick(now);
   if (this->learning_enabled_)
     for (auto &slot : this->learning_slots_) if (slot.used) slot.button.tick(now);
 }
 void RFRemoteHub::cancel_all_(uint32_t now) {
-  for (auto *entry : this->remotes_) entry->cancel(now);
+  for (auto *entry : this->gesture_remotes_) entry->cancel(now);
+  for (auto *entry : this->message_remotes_) entry->cancel(now);
   for (auto &slot : this->learning_slots_) {
     if (slot.used) slot.button.cancel(now);
     slot.used = slot.confirmed = false;
@@ -221,7 +248,7 @@ RFRemoteHub::LearningSlot *RFRemoteHub::learning_slot_(uint32_t code, uint32_t n
 }
 void RFRemoteHub::observe_frame(uint16_t plugin, uint32_t code, uint32_t now) {
   if (this->parent_ == nullptr || !this->parent_->is_decode_enabled()) return;
-  for (auto *entry : this->remotes_) entry->observe_frame(plugin, code, now);
+  for (auto *entry : this->gesture_remotes_) entry->observe_frame(plugin, code, now);
   if (!this->learning_enabled_ || plugin != 61 || code > 0xFFFFFF) return;
   LearningSlot *slot = this->learning_slot_(code, now);
   if (slot != nullptr) { slot->button.observe(plugin, code, now); slot->last_seen = now; }
@@ -240,18 +267,25 @@ void RFRemoteHub::learning_gesture_(LearningSlot &slot, const Gesture &e) {
   this->publish_gesture_(slot.key, e.type);
 }
 void RFRemoteHub::publish_signal_(const Match &key, const char *mode) {
-  std::string value = key.json(mode);
-  if (value.empty()) { ESP_LOGW(LEARN_TAG, "Match too long for learning sensor; use RF message log"); return; }
-  if (value == this->last_signal_) return;
-  this->last_signal_ = value;
+  const std::string machine = key.json(mode);
+  const std::string value = key.compact(mode);
+  if (machine.empty() || value.empty()) {
+    ESP_LOGW(LEARN_TAG, "Match too long for learning sensor; use RF message log");
+    return;
+  }
+  if (machine == this->last_signal_) return;
+  this->last_signal_ = machine;
   if (this->signal_sensor_ != nullptr) this->signal_sensor_->publish_state(value);
-  if (this->learning_logs_) ESP_LOGI(LEARN_TAG, "YAML match: %s", value.c_str());
+  // Keep the exact machine-readable form in the log for copy/paste into YAML.
+  if (this->learning_logs_) ESP_LOGI(LEARN_TAG, "YAML match: %s", machine.c_str());
 }
 void RFRemoteHub::publish_gesture_(const Match &key, const char *type) {
-  std::string value = key.json("gestures", type, ++this->sequence_);
-  if (value.empty()) return;
+  const uint32_t sequence = ++this->sequence_;
+  const std::string machine = key.json("gestures", type, sequence);
+  const std::string value = key.compact("gestures", type);
+  if (machine.empty() || value.empty()) return;
   if (this->gesture_sensor_ != nullptr) this->gesture_sensor_->publish_state(value);
-  if (this->learning_logs_) ESP_LOGD(LEARN_TAG, "%s", value.c_str());
+  if (this->learning_logs_) ESP_LOGD(LEARN_TAG, "%s", machine.c_str());
 }
 void RFRemoteHub::observe_message(const std::string &message, uint32_t now) {
   if (this->parent_ == nullptr || !this->parent_->is_decode_enabled() ||
@@ -264,7 +298,7 @@ void RFRemoteHub::observe_message(const std::string &message, uint32_t now) {
         (!root["CMD"].isNull() && !root["CMD"].is<const char *>())) return false;
     Match key{root["NAME"] | "", root["ID"] | "", root["SWITCH"] | "", root["CMD"] | ""};
     if (!key.valid()) return false;
-    for (auto *entry : this->remotes_) entry->observe_message(key, now);
+    for (auto *entry : this->message_remotes_) entry->observe_message(key, now);
     // EV1527 learning uses verified per-frame observations, not JSON dedup.
     // Other protocols are reported as MESSAGE-only; no invented holds/clicks.
     if (this->learning_enabled_ && key.protocol != "EV1527") this->publish_signal_(key, "message");

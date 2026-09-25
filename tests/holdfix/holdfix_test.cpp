@@ -99,6 +99,11 @@ int main(){
  // Documented ambiguity: a physical release/repress within the long held grace
  // is indistinguishable from a reception hole and remains the same hold.
  {Rig r;r.hold();r.burst(2300,100);assert(r.n("hold")==1&&r.n("press")==1);++tests;}
+ // A binding that does not subscribe to multi-click events can emit single at
+ // the release boundary instead of waiting the additional multi-click window.
+ {Rig r;r.button.set_immediate_single(true);r.burst(1000);r.button.tick(1279);
+  assert(r.n("single")==0);r.button.tick(1280);assert(r.n("single")==1);
+  r.button.tick(2000);assert(r.n("single")==1);++tests;}
  {Timing t;t.hold_release_ms=100;assert(!t.valid());t.hold_release_ms=450;t.repeat_fresh_ms=451;assert(!t.valid());
   t.repeat_fresh_ms=180;assert(t.valid());t.hold_release_ms=2001;assert(!t.valid());++tests;}
  std::cout<<"PASS: "<<tests<<" holdfix scenarios; no RF/Wi-Fi hardware emulation.\n";

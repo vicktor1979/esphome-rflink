@@ -1,29 +1,28 @@
-# A mellékelt tesztek futtatása
+# Host regressziós tesztek – v0.1.9
 
-Ez a ZIP a meglévő 0.1.6-os projekt frissítése, nem teljes, önálló repó.
-A saját repóval összemásolva az eredeti `RFLink/` headerek és `Plugins`, a változatlan
-`components/rflink/rflink.h`, `rflink_gestures.h`, `remote_receiver` és `rflink_remote`,
-valamint a `packages/rflink-ha-data-only.yaml` is rendelkezésre kell álljon.
-A tesztstubbok csak a hostfordítás segédei; az ESPHome nem tölti be őket.
+A `tests/` alatti stubbok kizárólag Linux/host tesztsegédek; firmware-be nem kerülnek.
+A tesztekhez Python 3.10+, PyYAML és GNU g++ szükséges.
 
-Linux, GNU g++, Python 3.10+ és PyYAML szükséges. A repó gyökeréből:
+A repó gyökeréből a fő ellenőrzések:
 
 ```bash
-python tests/extensions/run_tests.py --out /tmp/rflink-v017-tests
-python tests/extensions/run_remote_integration.py --out /tmp/rflink-v017-remotes
-python tests/extensions/test_configuration.py --out /tmp/rflink-v017-config
-python tests/extensions/run_capture.py --out /tmp/rflink-v017-capture
+python3 tests/run_tests.py
+python3 tests/remote_config/run_tests.py --repo . --out /tmp/rflink-remote
+python3 tests/rx_gate/run_tests.py --repo . --out /tmp/rflink-rxgate
+python3 tests/holdfix/run_tests.py --repo . --out /tmp/rflink-holdfix
+python3 tests/all_plugins/test_all_plugins.py --repo . --out /tmp/rflink-all
+python3 tests/test_v013.py
+python3 tests/test_native.py
 ```
 
-A korábbi 29/34 állapotgép-teszt forrása is mellékelve van; futtatható például:
+A suite ellenőrzi többek között:
 
-```bash
-g++ -std=gnu++20 -fsanitize=address,undefined -Icomponents/rflink tests/holdfix/legacy_gesture_test.cpp -o /tmp/rf-gestures
-/tmp/rf-gestures
-g++ -std=gnu++20 -fsanitize=address,undefined -Icomponents/rflink tests/holdfix/holdfix_test.cpp -o /tmp/rf-holdfix
-/tmp/rf-holdfix
-```
+- az eredeti 54 RFLink plugin/config/old fájl SHA256 azonosságát;
+- legacy pluginválasztásokat és host C++ fordítást;
+- EV1527 gesztusokat, holdfix működést és v0.1.9 immediate-single viselkedést;
+- `rflink_remote` minták/tanulás runtime útvonalát;
+- rxgate2 capture gate-et, pause/resume és overflow recovery viselkedést;
+- adatmezőket, generátort és YAML szerkezeti regressziókat.
 
-A régi, teljes `tests/remote_config/run_tests.py` korábbi kiadási fájlokat is ellenőriz: azt nem szükséges újra telepíteni ehhez a csomaghoz. A v0.1.7-es wrapper a tényleges változatlan távirányító C++ tesztet futtatja mindhárom extended kiválasztással.
-
-A `test_configuration.py` kizárólag szerkezeti YAML-ellenőrzést végez. A valódi ESPHome fordítást a mellékelt GitHub Actions definiálja; a csomag elkészítésekor ez **nem futott**.
+Ezek **nem** helyettesítik a valódi ESPHome/Xtensa fordítást és hardvertesztet.
+A host környezet nem emulálja az ESP8266 Wi-Fi/API/OTA időzítéseit vagy a tényleges 433 MHz-es rádiót.

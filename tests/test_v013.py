@@ -155,7 +155,7 @@ int main(){
  assert(rflink_api_pir.has_state()&&!rflink_api_pir.state);
  assert(rflink_api_hstatus_text.state=="Komfortos");assert(rflink_api_forecast_text.state=="Eső");
  assert(rflink_api_last_message.state.size()<=250);
- assert(rflink_api_last_message.state.find("bajt")!=std::string::npos);
+ assert(rflink_api_last_message.state=="SYNTHETIC · 0007");
  // A different source cannot inherit temperature/battery/smoke from the previous one.
  route(remote);flush();
  assert(std::isnan(rflink_api_temp.state));assert(std::isnan(rflink_api_co2.state));
@@ -207,19 +207,19 @@ int main(){
  assert(g.update(1005001,true,5000));g.reset();
  assert(!g.update(0xfffffff0u,true,5000));assert(!g.update(0x20u,true,5000));
  assert(g.update(0x2000u,true,5000));assert(g.update(0xfffffff0u,true,5000));
- std::cout<<"PASS: exact routing + identical events + coalesced snapshots + all 25 numeric fields + metadata + BAT/PIR/SMOKE + invalidation + strict formats + per-device isolation + expiry refresh + UTF-8 JSON parts + API-ready gate/rollover\n";
+ std::cout<<"PASS: exact routing + identical events + coalesced snapshots + all 27 numeric fields + metadata + BAT/PIR/SMOKE + invalidation + strict formats + per-device isolation + expiry refresh + UTF-8 JSON parts + API-ready gate/rollover\n";
 }
 '''
 
 def main():
     core=load(ROOT/'packages/rflink-ha-all-data.yaml')
-    device=load(ROOT/'rflink-auto-api-proba.yaml')
+    device=load(ROOT/'examples/rflink.yaml')
     for path in ROOT.rglob('*.yaml'):load(path)
-    assert device['rflink']['rx_plugins']==[61]
+    assert device['rflink']['rx_plugins']=='all'
     assert 'dump' not in device['remote_receiver']
-    assert device['remote_receiver']['buffer_size']=='1000b'
+    assert device['remote_receiver']['buffer_size']=='1200b'
     assert len(core['event'])==2
-    assert 'rf_decode_test_window' not in (ROOT/'rflink-auto-api-proba.yaml').read_text()
+    assert 'rf_decode_test_window' not in (ROOT/'examples/rflink.yaml').read_text()
     ids=[]
     for group in ['sensor','binary_sensor','text_sensor','event','globals','script','switch']:
         ids += [item['id'] for config in [core,device] for item in config.get(group,[]) if 'id' in item]
@@ -228,7 +228,7 @@ def main():
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     fixed=module.generate('unit','Test','Cresta','00ab',['TEMP','HUM','BAT'],'60min')
     all_fields=module.generate('all_unit','Test','Cresta','00ab',list(module.FIELDS)+list(module.BINARY)+list(module.TEXT),'60min')
-    assert len(module.FIELDS)==25
+    assert len(module.FIELDS)==27
     source=STUBS
     for group,typ in [('sensor','Sensor'),('text_sensor','TextSensor'),('binary_sensor','BinarySensor')]:
         for item in core.get(group,[])+fixed.get(group,[])+all_fields.get(group,[]):source+=typ+' '+item['id']+';\n'

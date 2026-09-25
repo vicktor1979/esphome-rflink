@@ -1,5 +1,5 @@
 # RFLink ESPHome – stable basic configuration example.
-# Release: v0.1.8.2
+# Release: v0.1.9
 #
 # ESP8266 / NodeMCU v2 example using rxgate2.
 # Native Home Assistant API, RF learning and runtime plugin control.
@@ -21,7 +21,9 @@ esphome:
           id(rf_receiver).set_capture_enabled(false);
           id(rf_bridge).set_decode_enabled(false);
           id(rf_start_gate).reset();
-          ESP_LOGI("rflink.auto", "vCAPTURE and DECODE wait for Home Assistant API; RX fast loop disabled");
+          id(rflink_build).publish_state("v0.1.9 · legacy");
+          id(rflink_health).publish_state("OK");
+          ESP_LOGI("rflink.auto", "CAPTURE and DECODE wait for Home Assistant API; RX fast loop disabled");
 
 esp8266:
   board: nodemcuv2
@@ -30,13 +32,13 @@ esp8266:
 packages:
   rflink_api:
     url: https://github.com/vicktor1979/esphome-rflink
-    ref: v0.1.8.2
+    ref: v0.1.9
     refresh: 5min
     files:
       - packages/rflink-ha-data-only.yaml
 
 external_components:
-  - source: github://vicktor1979/esphome-rflink@v0.1.8.2
+  - source: github://vicktor1979/esphome-rflink@v0.1.9
     components: [rflink, remote_receiver, rflink_remote]
     refresh: 5min
 
@@ -90,6 +92,18 @@ text_sensor:
     mac_address:
       id: rflink_mac
       internal: true
+  - platform: template
+    id: rflink_build
+    name: "RFLink build"
+    icon: mdi:information-outline
+    entity_category: diagnostic
+    update_interval: never
+  - platform: template
+    id: rflink_health
+    name: "RFLink állapot"
+    icon: mdi:heart-pulse
+    entity_category: diagnostic
+    update_interval: never
 
 sensor:
   - platform: wifi_signal
@@ -144,7 +158,13 @@ rflink:
   # and defaults to OFF.
   plugin_switches:
     restore: true
-    plugins: [30, 61, 254]
+    plugins:
+      - plugin_id: 30
+        id: rf_plugin_030
+      - plugin_id: 61
+        id: rf_plugin_061
+      - plugin_id: 254
+        id: rf_plugin_254
 
     active_plugins:
       name: "RFLink aktív pluginok"
@@ -155,7 +175,8 @@ rflink:
       pulse_count:
         name: "RFLink ismeretlen jel impulzusszám"
 
-  log_messages: true
+  # Fast production default. Turn on the HA switch below only while debugging.
+  log_messages: false
 
   on_message:
     - then:
@@ -193,6 +214,18 @@ switch:
       - lambda: id(rf_remotes).set_learning_enabled(true);
     turn_off_action:
       - lambda: id(rf_remotes).set_learning_enabled(false);
+
+  - platform: template
+    id: rf_verbose_log
+    name: "RFLink részletes napló"
+    icon: mdi:text-box-search-outline
+    entity_category: diagnostic
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - lambda: id(rf_bridge).set_log_messages(true);
+    turn_off_action:
+      - lambda: id(rf_bridge).set_log_messages(false);
 
 binary_sensor:
   - platform: template
@@ -257,6 +290,11 @@ interval:
               id(rf_receiver).is_high_frequency_requested() ? "ON" : "OFF",
               static_cast<unsigned long>(id(rf_receiver).get_loop_calls()),
               static_cast<unsigned long>(id(rf_receiver).get_overflow_reports()));
+          const uint32_t overflows = id(rf_receiver).get_overflow_reports();
+          const std::string health = overflows == 0 ? "OK" :
+              "RX overflow · " + std::to_string(static_cast<unsigned long>(overflows));
+          if (!id(rflink_health).has_state() || id(rflink_health).state != health)
+            id(rflink_health).publish_state(health);
 
 # A future OTA can be performed with RF completely inactive in safe mode.
 button:
@@ -265,7 +303,34 @@ button:
     entity_category: config
 
 
-# v0.1.6: shared timing and learning. No hard-coded remote identities here.
+  - platform: template
+    name: "RF debug 60 másodperc"
+    icon: mdi:bug-outline
+    entity_category: config
+    on_press:
+      - switch.turn_on: rf_plugin_254
+      - delay: 60s
+      - switch.turn_off: rf_plugin_254
+
+  - platform: template
+    name: "RF pluginok alaphelyzet"
+    icon: mdi:restore
+    entity_category: config
+    on_press:
+      - switch.turn_on: rf_plugin_030
+      - switch.turn_on: rf_plugin_061
+      - switch.turn_off: rf_plugin_254
+
+  - platform: template
+    name: "RF tanulás indítása"
+    icon: mdi:remote
+    entity_category: config
+    on_press:
+      - lambda: id(rf_remotes).set_learning_enabled(true);
+
+
+# v0.1.9: shared timing and learning. No hard-coded remote identities here.
+
 rflink_remote:
   id: rf_remotes
   rflink_id: rf_bridge

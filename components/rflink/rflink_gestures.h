@@ -65,6 +65,7 @@ class Button {
     return this->configured_;
   }
   void set_callback(Callback callback) { this->callback_ = std::move(callback); }
+  void set_immediate_single(bool enabled) { this->immediate_single_ = enabled; }
   bool configured() const { return this->configured_; }
   bool pressed() const { return this->pressed_; }
   bool holding() const { return this->held_; }
@@ -193,9 +194,20 @@ class Button {
     this->pressed_ = this->held_ = false;
     this->released_at_ = this->last_seen_ + (was_held ? this->timing_.held_release_timeout()
                                                         : this->timing_.release_ms);
-    if (!was_held && this->clicks_ <= MAX_CLICKS) ++this->clicks_;
+    if (!was_held) {
+      if (this->immediate_single_) {
+        // If this binding does not subscribe to any multi-click event there is
+        // no reason to wait multi_click_ms. Confirm the single immediately at
+        // the inferred release boundary. This removes the largest user-visible
+        // latency without changing bindings that use double/triple/click_N.
+        this->clicks_ = 0;
+      } else if (this->clicks_ <= MAX_CLICKS) {
+        ++this->clicks_;
+      }
+    }
     this->emit_("release", now, this->clicks_);
     if (was_held) this->emit_("hold_release", now, 0);
+    else if (this->immediate_single_) this->emit_("single", now, 1);
   }
   void emit_(const char *type, uint32_t now, uint16_t clicks) {
     if (this->callback_)
@@ -217,7 +229,7 @@ class Button {
   uint32_t stroke_frames_{0}, max_gap_{0}, total_frames_{0};
   uint32_t repeat_frame_mark_{0}, last_gap_{0}, bridged_gaps_{0};
   uint16_t clicks_{0};
-  bool configured_{false}, pressed_{false}, held_{false}, blocked_{false};
+  bool configured_{false}, pressed_{false}, held_{false}, blocked_{false}, immediate_single_{false};
 };
 
 }  // namespace rflink_gestures

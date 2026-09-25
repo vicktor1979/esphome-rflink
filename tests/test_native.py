@@ -154,7 +154,7 @@ int main() {
   std::string long_frame = R"({"NAME":"Other","ID":"long","DATA":")" + std::string(400, 'x') + R"("})";
   route(long_frame);
   assert(rflink_api_last_message.state.size()<=250);
-  assert(rflink_api_last_message.state.find("bajt")!=std::string::npos);
+  assert(rflink_api_last_message.state=="Other · long");
   assert(rflink_api_remote_1.received.size()==first_count);
 
   weather(R"({"NAME":"Cresta","ID":"1234","TEMP":"00ea","HUM":43,"BAT":"OK"})");

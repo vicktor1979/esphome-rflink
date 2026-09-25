@@ -18,7 +18,7 @@ struct Rig {
  uint32_t epoch=0;
  esphome::rflink::RFLinkComponent bridge;
  RFRemoteHub hub;
- RFRemoteEvent one,two,otherbutton,selected,message;
+ RFRemoteEvent one,two,otherbutton,selected,fast,message;
  esphome::binary_sensor::BinarySensor pressed;
  esphome::text_sensor::TextSensor signal,gesture;
  std::vector<std::string> jsons;
@@ -29,11 +29,13 @@ struct Rig {
    config(one,"085372","08");config(two,"01fac2","08");config(otherbutton,"085372","04");
    config(selected,"085372","08");selected.set_event_mask((1u<<2)|(1u<<3)); // single/double only
    selected.set_event_types({"single","double"});
+   config(fast,"085372","08");fast.set_event_mask((1u<<2)|(1u<<13)); // single + hold_repeat: no multi-click wait
+   fast.set_event_types({"single","hold_repeat"});
    one.set_pressed_sensor(&pressed);
    message.set_pattern("Chuango","5ac8d7","02","ON",false);message.set_log_events(false);message.set_event_mask(1u<<17);message.set_event_types({"received"});message.set_message_cooldown(250);
    hub.set_parent(&bridge);hub.set_timing_values(180,450,180,350,700,250,30000);
    hub.configure_learning(false,60000,4,3,false);hub.set_learning_signal_sensor(&signal);hub.set_learning_gesture_sensor(&gesture);
-   for(auto*p:{&one,&two,&otherbutton,&selected,&message})hub.add_remote(p);
+   for(auto*p:{&one,&two,&otherbutton,&selected,&fast,&message})hub.add_remote(p);
    bridge.setup();bridge.set_log_messages(false);bridge.set_decode_enabled(false);hub.setup();
    bridge.add_on_message_callback([this](std::string s){jsons.push_back(std::move(s));});
  }
@@ -48,17 +50,18 @@ struct Rig {
  void learn(uint32_t t){t+=epoch;test_millis=t;hub.set_learning_enabled(true);}
  void msg(uint32_t t,const std::string&s){t+=epoch;test_millis=t;hub.observe_message(s,t);}
 };
-static int gestures_in(const std::vector<std::string>&v,const char*type){int n=0;const std::string key=std::string("\"gesture\":\"")+type+'"';for(const auto&s:v)if(s.find(key)!=std::string::npos)++n;return n;}
+static int gestures_in(const std::vector<std::string>&v,const char*type){int n=0;const std::string key=std::string(" · ")+type;for(const auto&s:v)if(s.size()>=key.size()&&s.compare(s.size()-key.size(),key.size(),key)==0)++n;return n;}
 int main(){
  {Rig r;r.burst(1000);r.end(2000);CHECK(r.one.events.empty());CHECK(r.jsons.empty());CHECK(r.signal.history.empty());}
  {Rig r;r.enable();r.burst(1000);r.end(1700);CHECK(r.one.count("single")==1);CHECK(r.selected.count("single")==1);CHECK(r.two.events.empty());CHECK(r.otherbutton.events.empty());CHECK(!r.pressed.state);CHECK(r.signal.history.empty());CHECK(r.gesture.history.empty());}
+ {Rig r;r.enable();r.burst(1000);r.end(1259);CHECK(r.fast.count("single")==0);r.end(1260);CHECK(r.fast.count("single")==1);r.end(1700);CHECK(r.fast.count("single")==1);}
  {Rig r;r.enable();r.burst(1000);r.burst(1300);r.end(2000);CHECK(r.one.count("double")==1);CHECK(r.one.count("single")==0);CHECK(r.selected.count("double")==1);CHECK(r.jsons.size()>=1);}
  {Rig r;r.enable();r.burst(1000);r.burst(1300);r.burst(1600);r.end(2300);CHECK(r.one.count("triple")==1);CHECK(r.one.count("double")==0);CHECK(r.selected.events.empty());}
  {Rig r;r.enable();r.burst(1000,80,0x1fac28);r.end(1700);r.accepted_burst(2000,80,0x853724);r.end(2700);CHECK(r.two.count("single")==1);CHECK(r.otherbutton.count("single")==1);CHECK(r.one.events.empty());}
  {Rig r;r.enable();r.burst(1000,1000);r.end(2180);int n=r.one.count("hold_repeat");r.end(2330);CHECK(r.one.count("hold_repeat")==n);r.burst(2350,1000);r.burst(3790,1000);r.end(5240);CHECK(r.one.count("hold")==1);CHECK(r.one.count("hold_release")==1);CHECK(r.one.count("press")==1);CHECK(r.one.count("single")==0);CHECK(!r.pressed.state);CHECK(r.selected.events.empty());}
  {Rig r;r.enable();r.burst(1000,1000);r.end(2450);r.burst(2800,1000);r.end(4250);CHECK(r.one.count("hold")==2);CHECK(r.one.count("hold_release")==2);}
  {Rig r;r.enable();r.burst(1000);r.bridge.set_decode_enabled(false);r.end(2000);CHECK(r.one.count("cancel")==1);CHECK(r.one.count("single")==0);CHECK(!r.pressed.state);r.enable();r.end(3000);CHECK(r.one.count("single")==0);}
- {Rig r;r.enable();r.learn(1000);r.accepted_burst(1100,80,0x123454);r.end(1800);CHECK(r.one.events.empty());CHECK(r.signal.state.find("012345")!=std::string::npos);CHECK(r.signal.state.find("\"button\":\"04\"")!=std::string::npos);CHECK(gestures_in(r.gesture.history,"single")==1);CHECK(r.gesture.state.find("\"seq\":1")!=std::string::npos);r.accepted_burst(2000,80,0x123454);r.end(2700);CHECK(gestures_in(r.gesture.history,"single")==2);CHECK(r.gesture.state.find("\"seq\":2")!=std::string::npos);}
+ {Rig r;r.enable();r.learn(1000);r.accepted_burst(1100,80,0x123454);r.end(1800);CHECK(r.one.events.empty());CHECK(r.signal.state.find("012345")!=std::string::npos);CHECK(r.signal.state.find(" · 04 · ON · gestures")!=std::string::npos);CHECK(gestures_in(r.gesture.history,"single")==1);r.accepted_burst(2000,80,0x123454);r.end(2700);CHECK(gestures_in(r.gesture.history,"single")==2);}
  {Rig r;r.enable();r.learn(1000);r.accepted_frame(1100,0x222221);r.end(1800);CHECK(r.signal.history.empty());CHECK(r.gesture.history.empty());}
  {Rig r;r.enable();r.learn(1000);r.accepted_burst(1100,80,0x123454);r.accepted_burst(1400,80,0x123454);r.end(2100);CHECK(gestures_in(r.gesture.history,"double")==1);CHECK(gestures_in(r.gesture.history,"single")==0);}
  {Rig r;r.enable();r.learn(1000);r.accepted_burst(1100,80,0x123454);r.accepted_burst(1400,80,0x123454);r.accepted_burst(1700,80,0x123454);r.end(2400);CHECK(gestures_in(r.gesture.history,"triple")==1);}
@@ -76,8 +79,8 @@ int main(){
  }
  const std::string good=R"({"NAME":"Chuango","ID":"5ac8d7","SWITCH":"02","CMD":"ON"})";
  {Rig r;r.enable();r.msg(1000,good);r.msg(1100,good);r.msg(1250,good);CHECK(r.message.count("received")==2);CHECK(r.signal.history.empty());r.msg(2000,R"({"NAME":"Other","ID":"5ac8d7","SWITCH":"02","CMD":"ON"})");r.msg(2100,R"({"NAME":"Chuango","ID":"5ac8d7","SWITCH":"01","CMD":"ON"})");r.msg(2200,R"({"NAME":"Chuango","ID":"5ac8d7","SWITCH":"02","CMD":"OFF"})");CHECK(r.message.count("received")==2);CHECK(r.one.events.empty());}
- {Rig r;r.enable();r.learn(1000);r.msg(1100,good);CHECK(r.signal.state.find("\"mode\":\"message\"")!=std::string::npos);CHECK(r.gesture.history.empty());r.end(2000);CHECK(r.gesture.history.empty());}
- {Rig r;r.enable();r.learn(1000);r.msg(1100,R"({"NAME":"Cresta","ID":"abcd","TEMP":"00ea","BAT":"LOW"})");CHECK(r.signal.state.find("Cresta")!=std::string::npos);CHECK(r.signal.state.find("\"button\":\"\"")!=std::string::npos);CHECK(r.gesture.history.empty());}
+ {Rig r;r.enable();r.learn(1000);r.msg(1100,good);CHECK(r.signal.state.find(" · message")!=std::string::npos);CHECK(r.gesture.history.empty());r.end(2000);CHECK(r.gesture.history.empty());}
+ {Rig r;r.enable();r.learn(1000);r.msg(1100,R"({"NAME":"Cresta","ID":"abcd","TEMP":"00ea","BAT":"LOW"})");CHECK(r.signal.state.find("Cresta")!=std::string::npos);CHECK(r.signal.state.find("Cresta · abcd · message")!=std::string::npos);CHECK(r.gesture.history.empty());}
  {Rig r;r.enable();r.learn(1000);r.msg(1100,R"({"NAME":"EV1527","ID":"085372","SWITCH":"08","CMD":"ON"})");CHECK(r.signal.history.empty());CHECK(r.one.events.empty());CHECK(r.gesture.history.empty());}
  {Rig r;r.enable();r.learn(1000);r.msg(1100,"broken");r.msg(1200,R"({"NAME":"Chuango","ID":123,"SWITCH":"02","CMD":"ON"})");r.msg(1300,R"({"NAME":"Chuango","ID":"5ac8d7","SWITCH":2,"CMD":"ON"})");CHECK(r.signal.history.empty());CHECK(r.message.events.empty());}
  {const Match m{"Proto\"\\","0012","A1","UP"};const auto s=m.json("message");CHECK(!s.empty());CHECK(s.find("Proto\\\"\\\\")!=std::string::npos);CHECK(Match::ev1527(0x1fac28).rf_id=="01fac2");CHECK(Match::ev1527(0x853728).button=="08");CHECK((!Match{std::string(33,'x'),"1","",""}.valid()));}

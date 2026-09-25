@@ -60,6 +60,8 @@ class RemoteReceiverComponent final : public remote_base::RemoteReceiverBase, pu
   bool high_frequency_{true};  // backwards-compatible unless YAML opts out
   uint32_t loop_calls_{0};
   uint32_t overflow_reports_{0};
+  uint32_t overflow_log_pending_{0};
+  uint32_t last_overflow_log_ms_{0};
   bool capture_ready_{false};
   bool capture_requested_{true};
   bool capture_active_{false};

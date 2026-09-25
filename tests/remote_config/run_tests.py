@@ -12,6 +12,11 @@ def load_module(name,path):
 class Loader(yaml.SafeLoader):pass
 for tag in ['!lambda','!secret']:
     Loader.add_constructor(tag,lambda l,n:l.construct_scalar(n))
+def include_value(loader, node):
+    if isinstance(node, yaml.ScalarNode): return loader.construct_scalar(node)
+    if isinstance(node, yaml.MappingNode): return loader.construct_mapping(node, deep=True)
+    return loader.construct_sequence(node, deep=True)
+Loader.add_constructor('!include', include_value)
 def mapping(l,n,deep=False):
     out={}
     for k,v in n.value:
@@ -52,17 +57,22 @@ def main():
         except ValueError:cases+=1
         else:raise AssertionError(values)
     log(f'PASS: pure pattern/timing validators; normalization, default mode, {cases} invalid cases rejected.')
-    main_yaml=yaml.load((ROOT/'rflink-yaml-tanulas-proba.yaml').read_text(),Loader=Loader)
+    main_yaml=yaml.load((repo/'examples/rflink.yaml').read_text(),Loader=Loader)
     assert main_yaml['remote_receiver']['high_frequency'] is False
     assert main_yaml['remote_receiver']['capture_enabled'] is False
     assert main_yaml['rflink']['rx_plugins']=='all'
     assert main_yaml['packages']['rflink_api']['files']==['packages/rflink-ha-data-only.yaml']
     data=yaml.load((ROOT/'packages/rflink-ha-data-only.yaml').read_text(),Loader=Loader)
     assert 'event' not in data
-    for c in main_yaml['event']:v.validate_pattern(c)
-    for f in (ROOT/'examples').glob('*.yaml'):
+    for f in (repo/'examples').rglob('*.yaml'):
         d=yaml.load(f.read_text(),Loader=Loader)
-        for c in d.get('event',[]):v.validate_pattern(c)
+        if isinstance(d, dict):
+            for c in d.get('event',[]):
+                # Documentation fragments deliberately contain REPLACE_* tokens;
+                # only fully concrete examples are validator fixtures.
+                if any(str(c.get(k, '')).startswith('REPLACE_') for k in ['protocol','rf_id','button','command']):
+                    continue
+                v.validate_pattern(c)
     log('PASS: YAML unique keys and event matches; no duplicate old packages; all RX and rxgate2 flags retained.')
     # Sensor/field conversion content must be preserved exactly from the working package.
     old=yaml.load((repo/'packages/rflink-ha-all-data.yaml').read_text(),Loader=Loader)

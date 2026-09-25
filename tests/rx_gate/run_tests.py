@@ -32,22 +32,22 @@ def main():
     args=ap.parse_args();repo=args.repo.resolve();out=args.out.resolve();out.mkdir(parents=True,exist_ok=True)
     report=[]
     def passed(s):print('PASS: '+s,flush=True);report.append('PASS: '+s)
-    config=load(PATCH/'rflink-rxgate2-proba.yaml')
-    assert config['external_components'][0]['components']==['rflink','remote_receiver']
+    config=load(repo/'examples/rflink.yaml')
+    assert config['external_components'][0]['components']==['rflink','remote_receiver','rflink_remote']
     assert config['remote_receiver']['capture_enabled'] is False
     assert config['remote_receiver']['high_frequency'] is False
     assert config['rflink']['rx_plugins']=='all'
     assert config['remote_receiver']['pin']['number']=='GPIO5'
     assert config['remote_receiver']['filter']=='100us' and config['remote_receiver']['idle']=='5ms'
-    assert config['remote_receiver']['buffer_size']=='1000b'
+    assert config['remote_receiver']['buffer_size']=='1200b'
     assert 'dump' not in config['remote_receiver'] and 'mqtt' not in config
     ids=[]
-    for doc in [config,load(repo/'packages/rflink-ha-all-data.yaml'),load(repo/'packages/rflink-ha-gestures.yaml')]:
+    for doc in [config,load(repo/'packages/rflink-ha-data-only.yaml')]:
         for section in ['globals','event','binary_sensor','sensor','text_sensor','switch','script']:
             ids.extend(i['id'] for i in doc.get(section,[]) if 'id' in i)
     assert len(ids)==len(set(ids))
-    passed('YAML parses with no duplicate keys/IDs; all RX, both existing packages and original RF timings retained.')
-    compile((PATCH/'components/remote_receiver/__init__.py').read_text(), '__init__.py','exec')
+    passed('YAML parses with no duplicate keys/IDs; all RX, current data package and stable RX timings retained.')
+    compile((repo/'components/remote_receiver/__init__.py').read_text(), '__init__.py','exec')
     passed('External receiver Python syntax compiles (NOT ESPHome schema validation).')
     hashes=json.loads((repo/'UPSTREAM_SHA256.json').read_text())
     assert len(hashes)==54
@@ -72,8 +72,8 @@ def main():
         cmd=['g++','-std=gnu++20','-DESP8266','-DUSE_ESP8266','-Wall','-Wextra','-g',
              '-fno-pie','-no-pie','-fsanitize=address,undefined','-fno-omit-frame-pointer','-DRFLINK_TEST_STRICT_PROGMEM',
              '-I'+str(HERE/'stubs'),'-I'+str(src),'-I'+str(t),'-I'+str(repo/'components/rflink'),
-             '-I'+str(PATCH/'components/remote_receiver'),
-             str(PATCH/'components/remote_receiver/remote_receiver.cpp'),
+             '-I'+str(repo/'components/remote_receiver'),
+             str(repo/'components/remote_receiver/remote_receiver.cpp'),
              str(repo/'components/rflink/rflink.cpp'),str(repo/'components/rflink/rflink_engine.cpp'),
              str(HERE/'test_capture.cpp'),'-o',str(t/'test_capture')]
         env=dict(os.environ,LC_ALL='C',ASAN_OPTIONS='detect_leaks=1',UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1')

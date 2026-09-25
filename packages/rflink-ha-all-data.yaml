@@ -516,8 +516,9 @@ script:
         data::publish_text(id(rflink_api_last_switch), button);
         data::publish_text(id(rflink_api_last_command), command);
         data::publish_text(id(rflink_api_param_text), root["PARAM"] | "");
-        const std::string preview = message.size() <= 250 ? message :
-            "RFLink JSON: " + std::to_string(message.size()) + " bajt; reszletek a mezokben / JSON 1-5.";
+        std::string preview = protocol + " · " + device;
+        if (!button.empty()) preview += " · " + button;
+        if (!command.empty()) preview += " · " + command;
         data::publish_text(id(rflink_api_last_message), preview);
         std::string invalid_fields;
         const auto field_SET_LEVEL = data::number(root, data::SET_LEVEL);

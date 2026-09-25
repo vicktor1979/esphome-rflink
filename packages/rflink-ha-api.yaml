@@ -146,10 +146,10 @@ script:
             // Missing fields are cleared, not inherited from the last remote.
             publish_changed(id(rflink_api_last_switch), button);
             publish_changed(id(rflink_api_last_command), command);
-            // HA entity states must remain short. Never publish a chopped JSON.
-            const std::string preview = message.size() <= 250 ? message :
-                "RFLink uzenet: " + std::to_string(message.size()) +
-                " bajt; a teljes JSON az ESPHome naplojaban olvashato.";
+            // Keep the HA row compact. The complete decoder JSON remains in the ESPHome log.
+            std::string preview = protocol + " · " + device;
+            if (!button.empty()) preview += " · " + button;
+            if (!command.empty()) preview += " · " + command;
             publish_changed(id(rflink_api_last_message), preview);
 
             // The unchanged Plugin_061 emits ON for a received EV1527 packet.
