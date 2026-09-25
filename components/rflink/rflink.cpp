@@ -41,7 +41,7 @@ void RFLinkComponent::setup() {
     this->ready_timing_ = false;
     this->auto_running_ = false;
     if (this->build_text_sensor_ != nullptr) {
-      std::string build{"v0.1.9.6 · "};
+      std::string build{"v0.1.9.8 · "};
       build += ::rflink_legacy::plugin_profile();
       build += " · ";
       build += std::to_string(static_cast<unsigned>(::rflink_legacy::plugin_count()));
@@ -103,7 +103,7 @@ void RFLinkComponent::loop() {
 }
 
 void RFLinkComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.9.7 (adaptive RX; Alecto bidirectional burst recovery):");
+  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.9.8 (adaptive RX; Alecto bidirectional burst recovery; UART-off compatible):");
   ESP_LOGCONFIG(TAG, "  Plugin profile: %s", rflink_legacy::plugin_profile());
   ESP_LOGCONFIG(TAG, "  RX plugins compiled: %u", static_cast<unsigned>(::rflink_legacy::plugin_count()));
   ESP_LOGCONFIG(TAG, "  RX plugins enabled: %u", static_cast<unsigned>(::rflink_legacy::enabled_plugin_count()));

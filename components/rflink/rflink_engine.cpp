@@ -1,5 +1,7 @@
 // Compatibility implementation; original plugin and utility bytes are unmodified.
-// v0.1.9.7: bidirectional Alecto V1 alignment handles split and merged edge pairs around untouched Plugin_030.
+// v0.1.9.8: keep the v0.1.9.7 Alecto recovery and add a namespace-local
+// no-op Serial compatibility sink so the untouched legacy plugins also compile
+// when ESPHome logger baud_rate is 0 and the Arduino global Serial object is omitted.
 #include "rflink_engine.h"
 #include <Arduino.h>
 #include <algorithm>
@@ -8,6 +10,21 @@
 #include <limits>
 
 namespace rflink_legacy {
+
+// Several untouched RFLink plugins contain legacy Serial.print()/println()/write()
+// calls in debug/error branches. ESPHome intentionally omits the Arduino global
+// Serial object when logger baud_rate: 0, which otherwise makes those original
+// plugin sources fail to compile. Keep the plugins byte-for-byte unchanged and
+// shadow Serial only inside the rflink_legacy namespace. RFLink protocol output
+// already goes through the compatibility formatter below, so discarding these
+// legacy UART-only diagnostics is both safe and removes UART work from the RF
+// hot path.
+struct LegacyNullSerial {
+  template<typename... Args> void print(Args &&...) const {}
+  template<typename... Args> void println(Args &&...) const {}
+  template<typename... Args> void write(Args &&...) const {}
+};
+static constexpr LegacyNullSerial Serial{};
 #include "rflink_vendor/2_Signal.h"
 #include "rflink_vendor/4_Display.h"
 #include "rflink_vendor/7_Utils.h"
