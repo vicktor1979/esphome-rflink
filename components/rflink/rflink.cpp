@@ -103,7 +103,7 @@ void RFLinkComponent::loop() {
 }
 
 void RFLinkComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.9.6 (adaptive RX; Alecto soft-alignment recovery):");
+  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.9.7 (adaptive RX; Alecto bidirectional burst recovery):");
   ESP_LOGCONFIG(TAG, "  Plugin profile: %s", rflink_legacy::plugin_profile());
   ESP_LOGCONFIG(TAG, "  RX plugins compiled: %u", static_cast<unsigned>(::rflink_legacy::plugin_count()));
   ESP_LOGCONFIG(TAG, "  RX plugins enabled: %u", static_cast<unsigned>(::rflink_legacy::enabled_plugin_count()));
@@ -225,7 +225,7 @@ void RFLinkComponent::update_diagnostics_(uint32_t now, bool network_ready, bool
   if (this->receiver_ == nullptr) return;
 #ifdef USE_ESP8266
   ESP_LOGI("rflink.diag",
-           "AUTO=%s; CAPTURE=%s; DECODE=%s; api_states=%s; network=%s; uptime=%lu s; heap=%u B; max_block=%u B; frag=%u%%; frames=%lu; decoded=%lu; calls=%lu; skipped=%lu; decode_max_us=%lu; callback_max_us=%lu; observed=%lu; frame_callback_max_us=%lu; irq_total=%lu; fast_loop=%s; rx_loop_calls=%lu; overflow_reports=%lu; recoveries=%lu; backlog_boosts=%lu; backlog_max=%lu; history_resets=%lu",
+           "AUTO=%s; CAPTURE=%s; DECODE=%s; api_states=%s; network=%s; uptime=%lu s; heap=%u B; max_block=%u B; frag=%u%%; frames=%lu; decoded=%lu; calls=%lu; skipped=%lu; decode_max_us=%lu; callback_max_us=%lu; observed=%lu; frame_callback_max_us=%lu; irq_total=%lu; fast_loop=%s; rx_loop_calls=%lu; overflow_reports=%lu; recoveries=%lu; backlog_boosts=%lu; backlog_max=%lu; history_resets=%lu; alecto_soft=%lu; alecto_rebuilt=%lu",
            this->monitoring_enabled_ ? "ON" : "OFF",
            this->receiver_->is_capture_enabled() ? "ON" : "OFF", this->decode_enabled_ ? "ON" : "OFF",
            api_ready ? "YES" : "NO", network_ready ? "CONNECTED" : "DISCONNECTED",
@@ -242,10 +242,12 @@ void RFLinkComponent::update_diagnostics_(uint32_t now, bool network_ready, bool
            static_cast<unsigned long>(this->receiver_->get_recovery_count()),
            static_cast<unsigned long>(this->receiver_->get_backlog_boost_count()),
            static_cast<unsigned long>(this->receiver_->get_max_completed_backlog()),
-           static_cast<unsigned long>(this->repeat_history_resets_));
+           static_cast<unsigned long>(this->repeat_history_resets_),
+           static_cast<unsigned long>(::rflink_legacy::get_alecto_soft_frame_count()),
+           static_cast<unsigned long>(::rflink_legacy::get_alecto_reconstructed_count()));
 #else
   ESP_LOGI("rflink.diag",
-           "AUTO=%s; CAPTURE=%s; DECODE=%s; api_states=%s; network=%s; frames=%lu; decoded=%lu; calls=%lu; skipped=%lu; decode_max_us=%lu; overflow_reports=%lu; recoveries=%lu; backlog_boosts=%lu; backlog_max=%lu; history_resets=%lu",
+           "AUTO=%s; CAPTURE=%s; DECODE=%s; api_states=%s; network=%s; frames=%lu; decoded=%lu; calls=%lu; skipped=%lu; decode_max_us=%lu; overflow_reports=%lu; recoveries=%lu; backlog_boosts=%lu; backlog_max=%lu; history_resets=%lu; alecto_soft=%lu; alecto_rebuilt=%lu",
            this->monitoring_enabled_ ? "ON" : "OFF",
            this->receiver_->is_capture_enabled() ? "ON" : "OFF", this->decode_enabled_ ? "ON" : "OFF",
            api_ready ? "YES" : "NO", network_ready ? "CONNECTED" : "DISCONNECTED",
@@ -256,7 +258,9 @@ void RFLinkComponent::update_diagnostics_(uint32_t now, bool network_ready, bool
            static_cast<unsigned long>(this->receiver_->get_recovery_count()),
            static_cast<unsigned long>(this->receiver_->get_backlog_boost_count()),
            static_cast<unsigned long>(this->receiver_->get_max_completed_backlog()),
-           static_cast<unsigned long>(this->repeat_history_resets_));
+           static_cast<unsigned long>(this->repeat_history_resets_),
+           static_cast<unsigned long>(::rflink_legacy::get_alecto_soft_frame_count()),
+           static_cast<unsigned long>(::rflink_legacy::get_alecto_reconstructed_count()));
 #endif
 }
 #endif  // USE_RFLINK_AUTO_START
@@ -363,14 +367,26 @@ bool RFLinkComponent::on_receive(remote_base::RemoteReceiveData data) {
     const bool alecto_candidate = unsupported.pulse_count == 74 &&
         ::rflink_legacy::diagnose_alecto_v1_candidate(data.get_raw_data(), alecto_diagnostic);
 
-    if (this->unsupported_signal_text_sensor_ != nullptr) {
-      // A 74-pulse Alecto candidate is far more useful in HA when we expose
-      // the exact Plugin_030 reject reason instead of only a truncated pulse list.
-      this->unsupported_signal_text_sensor_->publish_state(
-          alecto_candidate ? alecto_diagnostic : unsupported.summary);
+    // Plugin 254 can see dozens of noise frames per second on a 433 MHz
+    // receiver. Publishing every one of them over the native API creates a
+    // feedback loop (heap churn + logger/API traffic) exactly while timing
+    // sensitive RF capture is running. Keep exact Alecto candidates immediate,
+    // but throttle generic unsupported telemetry to 4 Hz.
+    static uint32_t last_unsupported_publish_ms = 0;
+    const uint32_t unsupported_now_ms = millis();
+    const bool publish_unsupported = alecto_candidate || last_unsupported_publish_ms == 0 ||
+        static_cast<uint32_t>(unsupported_now_ms - last_unsupported_publish_ms) >= 250U;
+    if (publish_unsupported) {
+      last_unsupported_publish_ms = unsupported_now_ms;
+      if (this->unsupported_signal_text_sensor_ != nullptr) {
+        // A 74-pulse Alecto candidate is far more useful in HA when we expose
+        // the exact Plugin_030 reject reason instead of only a truncated pulse list.
+        this->unsupported_signal_text_sensor_->publish_state(
+            alecto_candidate ? alecto_diagnostic : unsupported.summary);
+      }
+      if (this->unsupported_pulse_count_sensor_ != nullptr)
+        this->unsupported_pulse_count_sensor_->publish_state(unsupported.pulse_count);
     }
-    if (this->unsupported_pulse_count_sensor_ != nullptr)
-      this->unsupported_pulse_count_sensor_->publish_state(unsupported.pulse_count);
 
     if (alecto_candidate) {
       ESP_LOGW("rflink.alecto", "%s; plugin030=%s", alecto_diagnostic.c_str(),
@@ -413,7 +429,7 @@ bool RFLinkComponent::on_receive(remote_base::RemoteReceiveData data) {
         ESP_LOGW("rflink.alecto.raw", "%s", part2.c_str());
       }
     }
-    if (this->log_messages_)
+    if (this->log_messages_ && publish_unsupported)
       ESP_LOGD(TAG, "Plugin 254 unsupported RF: %s%s", unsupported.summary.c_str(),
                unsupported.truncated ? " [HA summary truncated]" : "");
   }

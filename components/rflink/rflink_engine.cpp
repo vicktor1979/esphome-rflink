@@ -1,5 +1,5 @@
 // Compatibility implementation; original plugin and utility bytes are unmodified.
-// v0.1.9.6: Alecto V1 soft alignment handles both narrow glitches and merged edges around untouched Plugin_030.
+// v0.1.9.7: bidirectional Alecto V1 alignment handles split and merged edge pairs around untouched Plugin_030.
 #include "rflink_engine.h"
 #include <Arduino.h>
 #include <algorithm>
@@ -39,6 +39,8 @@ struct AlectoRepeatAccumulator {
   uint8_t one_votes[36]{};
 };
 AlectoRepeatAccumulator alecto_repeat{};
+uint32_t alecto_soft_frame_count = 0;
+uint32_t alecto_reconstructed_count = 0;
 
 void reset_alecto_repeat() { alecto_repeat = AlectoRepeatAccumulator{}; }
 
@@ -129,19 +131,32 @@ void build_unsupported_summary(int pulse_count, UnsupportedObservation *unsuppor
 }
 
 constexpr uint32_t ALECTO_REPEAT_WINDOW_MS = 2500;
-constexpr uint32_t ALECTO_GLITCH_MAX_US = 280;
 constexpr uint8_t ALECTO_EXPECTED_SIGNAL_PULSES = 73;  // pulse 74 is the idle timeout
-constexpr uint8_t ALECTO_MAX_SOFT_MERGES = 8;
+constexpr uint8_t ALECTO_MAX_OBSERVED_PULSES = 120;
 constexpr uint16_t ALECTO_ALIGN_INF = 0xFFFF;
 constexpr uint16_t ALECTO_SHORT_NOMINAL_US = 480;
 constexpr uint16_t ALECTO_ZERO_NOMINAL_US = 1950;
 constexpr uint16_t ALECTO_ONE_NOMINAL_US = 4400;
+constexpr uint16_t ALECTO_PRECOLLAPSE_GLITCH_US = 180;
+constexpr uint16_t ALECTO_MAX_ALIGNMENT_COST = 2600;
 
-// One predecessor bit is enough for the soft alignment: 0 = one observed pulse
-// mapped to one expected pulse, 1 = one observed merged pulse mapped to three
-// expected pulses. The table is reused serially from the ESPHome main loop.
-constexpr size_t ALECTO_PRED_STATES = 74U * 74U;
-uint8_t alecto_pred_bits[(ALECTO_PRED_STATES + 7U) / 8U]{};
+// v0.1.9.7 alignment operations. RF glitches normally arrive as an extra edge
+// pair (three observed intervals are really one RF interval), while missed edge
+// pairs make one observed interval cover three expected RF intervals. Keeping
+// both operations inside one bounded dynamic program avoids the old failure
+// mode where pre-filtering had to guess which 100..900 us pulse was noise.
+enum AlectoAlignOp : uint8_t {
+  ALECTO_OP_NONE = 0,
+  ALECTO_OP_11 = 1,  // 1 observed -> 1 expected
+  ALECTO_OP_13 = 2,  // 1 observed -> 3 expected (missed edge pair)
+  ALECTO_OP_31 = 3,  // 3 observed -> 1 expected (extra edge pair)
+};
+
+constexpr size_t ALECTO_PRED_STATES =
+    static_cast<size_t>(ALECTO_MAX_OBSERVED_PULSES + 1U) * 74U;
+uint8_t alecto_pred_ops[(ALECTO_PRED_STATES + 3U) / 4U]{};
+uint16_t alecto_cost_rows[4][74]{};
+int16_t alecto_cost_row_tag[4]{-1, -1, -1, -1};
 
 inline uint32_t abs_diff_u32(uint32_t a, uint32_t b) { return a > b ? a - b : b - a; }
 inline uint16_t sat_cost(uint32_t value) {
@@ -150,17 +165,29 @@ inline uint16_t sat_cost(uint32_t value) {
 inline size_t alecto_pred_index(uint8_t observed, uint8_t expected) {
   return static_cast<size_t>(observed) * 74U + expected;
 }
-void set_alecto_pred(uint8_t observed, uint8_t expected, bool merged_three) {
+void clear_alecto_pred() { std::memset(alecto_pred_ops, 0, sizeof(alecto_pred_ops)); }
+void set_alecto_pred(uint8_t observed, uint8_t expected, AlectoAlignOp op) {
   const size_t index = alecto_pred_index(observed, expected);
-  const uint8_t mask = static_cast<uint8_t>(1U << (index & 7U));
-  if (merged_three)
-    alecto_pred_bits[index >> 3U] |= mask;
-  else
-    alecto_pred_bits[index >> 3U] &= static_cast<uint8_t>(~mask);
+  const size_t byte_index = index >> 2U;
+  const uint8_t shift = static_cast<uint8_t>((index & 3U) * 2U);
+  const uint8_t mask = static_cast<uint8_t>(0x03U << shift);
+  alecto_pred_ops[byte_index] = static_cast<uint8_t>(
+      (alecto_pred_ops[byte_index] & static_cast<uint8_t>(~mask)) |
+      ((static_cast<uint8_t>(op) & 0x03U) << shift));
 }
-bool get_alecto_pred(uint8_t observed, uint8_t expected) {
+AlectoAlignOp get_alecto_pred(uint8_t observed, uint8_t expected) {
   const size_t index = alecto_pred_index(observed, expected);
-  return (alecto_pred_bits[index >> 3U] & static_cast<uint8_t>(1U << (index & 7U))) != 0;
+  const uint8_t shift = static_cast<uint8_t>((index & 3U) * 2U);
+  return static_cast<AlectoAlignOp>((alecto_pred_ops[index >> 2U] >> shift) & 0x03U);
+}
+
+uint16_t *alecto_cost_row(uint8_t observed) {
+  const uint8_t slot = static_cast<uint8_t>(observed & 3U);
+  if (alecto_cost_row_tag[slot] != static_cast<int16_t>(observed)) {
+    for (uint8_t j = 0; j < 74U; ++j) alecto_cost_rows[slot][j] = ALECTO_ALIGN_INF;
+    alecto_cost_row_tag[slot] = observed;
+  }
+  return alecto_cost_rows[slot];
 }
 
 struct AlectoDataClass {
@@ -171,7 +198,7 @@ struct AlectoDataClass {
 
 uint16_t alecto_short_cost(uint32_t us) {
   uint32_t cost = abs_diff_u32(us, ALECTO_SHORT_NOMINAL_US) / 16U;
-  if (us < 250U || us > 900U) cost += 180U;
+  if (us < 220U || us > 1050U) cost += 170U;
   return sat_cost(cost);
 }
 
@@ -181,32 +208,48 @@ AlectoDataClass alecto_data_cost(uint32_t us) {
   AlectoDataClass result;
   if (zero_cost <= one_cost) {
     result.bit = 0;
-    result.confident = us >= 1200U && us <= 2700U;
-    result.cost = sat_cost(zero_cost + (result.confident ? 0U : 180U));
+    result.confident = us >= 1100U && us <= 2900U;
+    result.cost = sat_cost(zero_cost + (result.confident ? 0U : 170U));
   } else {
     result.bit = 1;
-    result.confident = us >= 3000U && us <= 5800U;
-    result.cost = sat_cost(one_cost + (result.confident ? 0U : 180U));
+    result.confident = us >= 3000U && us <= 6200U;
+    result.cost = sat_cost(one_cost + (result.confident ? 0U : 170U));
   }
   return result;
 }
 
-uint16_t alecto_merged_three_cost(uint32_t us, uint8_t first_expected) {
+uint16_t alecto_merged_expected_cost(uint32_t us, uint8_t first_expected) {
   uint32_t best = UINT32_MAX;
   if ((first_expected & 1U) != 0U) {
-    // short + data + short
+    // short + data + short. One hidden bit can later be recovered when the
+    // combined duration strongly prefers the zero or one target.
     const uint32_t zero_target = ALECTO_SHORT_NOMINAL_US + ALECTO_ZERO_NOMINAL_US + ALECTO_SHORT_NOMINAL_US;
     const uint32_t one_target = ALECTO_SHORT_NOMINAL_US + ALECTO_ONE_NOMINAL_US + ALECTO_SHORT_NOMINAL_US;
     best = std::min(abs_diff_u32(us, zero_target), abs_diff_u32(us, one_target));
   } else {
-    // data + short + data. The merged interval hides both data bits, so only
-    // use it to restore phase; neither hidden bit receives a vote.
+    // data + short + data. Keep this operation for phase recovery; two data
+    // bits are hidden, so backtracking normally does not vote them.
     const uint32_t zz = ALECTO_ZERO_NOMINAL_US + ALECTO_SHORT_NOMINAL_US + ALECTO_ZERO_NOMINAL_US;
     const uint32_t zo = ALECTO_ZERO_NOMINAL_US + ALECTO_SHORT_NOMINAL_US + ALECTO_ONE_NOMINAL_US;
     const uint32_t oo = ALECTO_ONE_NOMINAL_US + ALECTO_SHORT_NOMINAL_US + ALECTO_ONE_NOMINAL_US;
     best = std::min(abs_diff_u32(us, zz), std::min(abs_diff_u32(us, zo), abs_diff_u32(us, oo)));
   }
-  return sat_cost(best / 28U + 120U);  // explicit penalty: prefer an ordinary match when plausible
+  return sat_cost(best / 28U + 105U);
+}
+
+uint16_t alecto_split_observed_cost(uint32_t a, uint32_t b, uint32_t c, uint8_t expected_position) {
+  const uint32_t total = a + b + c;
+  uint32_t cost = 0;
+  if ((expected_position & 1U) != 0U) {
+    cost = alecto_short_cost(total);
+  } else {
+    cost = alecto_data_cost(total).cost;
+  }
+  // An extra edge pair is an edit, never a free alternative to a clean pulse.
+  // Wider middle excursions are less plausible but still occur in the user's
+  // real captures, so penalize rather than hard-reject them.
+  cost += 85U + std::min<uint32_t>(120U, b / 12U);
+  return sat_cost(cost);
 }
 
 bool alecto_bits_valid(const uint8_t bits[36]) {
@@ -237,7 +280,7 @@ bool alecto_bits_valid(const uint8_t bits[36]) {
   if (checksum != checksumcalc) return false;
 
   // Mirror Plugin_030's range checks so a coincidental checksum can never turn
-  // random traffic into a synthetic Alecto event.
+  // unrelated RF traffic into a synthetic Alecto event.
   if ((data[2] & 0x06) != 0x06) {
     const uint8_t d3 = static_cast<uint8_t>(data[3] & 0x07);
     const int temperature = static_cast<int>((data[5] << 8) | (data[4] << 4) | d3);
@@ -255,15 +298,38 @@ bool alecto_bits_valid(const uint8_t bits[36]) {
   return subtype == 0x03 || subtype == 0x01 || subtype == 0x07;
 }
 
-// Extract only trustworthy bit observations from a damaged Alecto repeat.
-// Narrow glitches are collapsed first. Missing edges then show up as one long
-// observed interval covering three expected RF segments. A tiny dynamic
-// alignment restores phase but deliberately marks every hidden data bit as
-// unknown. This lets repeated rows vote without inventing information.
+bool looks_like_alecto_waveform(const uint32_t *work, uint8_t count, uint64_t total_us) {
+  if (count < 55U || count > ALECTO_MAX_OBSERVED_PULSES) return false;
+  if (total_us < 70000U || total_us > 185000U) return false;
+  uint8_t short_like = 0;
+  uint8_t data_like = 0;
+  uint8_t recognized = 0;
+  for (uint8_t i = 0; i < count; ++i) {
+    const uint32_t us = work[i];
+    if (us >= 220U && us <= 1050U) {
+      ++short_like;
+      ++recognized;
+    } else if ((us >= 1100U && us <= 2900U) || (us >= 3000U && us <= 6200U)) {
+      ++data_like;
+      ++recognized;
+    }
+  }
+  // Cheap gate before the dynamic program. The real noisy captures still score
+  // around 80..90%, while random 433 MHz traffic normally does not.
+  return short_like >= 12U && data_like >= 12U &&
+         static_cast<uint16_t>(recognized) * 100U >= static_cast<uint16_t>(count) * 58U;
+}
+
+// Extract trustworthy bit observations from one damaged Alecto repeat. The
+// alignment itself can repair BOTH directions of edge-count error:
+//   3 observed -> 1 expected : a false edge pair split one physical interval
+//   1 observed -> 3 expected : an edge pair was missed and intervals merged
+// The routine never fabricates a complete packet from one row. It returns only
+// confident bit observations; several repeats must agree before checksum test.
 bool extract_alecto_soft_bits(const std::vector<int32_t> &timings, uint8_t frame_bits[36],
-                              uint8_t frame_known[36], uint8_t &known_count, uint8_t &merge_count) {
+                              uint8_t frame_known[36], uint8_t &known_count, uint16_t &alignment_cost) {
   known_count = 0;
-  merge_count = 0;
+  alignment_cost = ALECTO_ALIGN_INF;
   std::memset(frame_bits, 0, 36);
   std::memset(frame_known, 0, 36);
   if (timings.empty()) return false;
@@ -275,10 +341,9 @@ bool extract_alecto_soft_bits(const std::vector<int32_t> &timings, uint8_t frame
   if (end == first) return false;
   const bool append_timeout = timings[end - 1] > 0;
   size_t signal_count = end - first;
-  const size_t total_count = signal_count + (append_timeout ? 1U : 0U);
-  if (total_count < 60U || total_count > 96U || signal_count > 95U) return false;
+  if (signal_count > ALECTO_MAX_OBSERVED_PULSES) return false;
 
-  uint32_t work[96]{};
+  uint32_t work[ALECTO_MAX_OBSERVED_PULSES]{};
   uint64_t total_us = 0;
   for (size_t i = 0; i < signal_count; ++i) {
     const int64_t signed_value = timings[first + i];
@@ -287,14 +352,15 @@ bool extract_alecto_soft_bits(const std::vector<int32_t> &timings, uint8_t frame
     work[i] = static_cast<uint32_t>(us64);
     total_us += us64;
   }
-  if (total_us < 80000U || total_us > 170000U) return false;
+  (void) append_timeout;
 
-  // Collapse every clearly impossible Alecto pulse, even when the raw packet
-  // already happens to contain exactly 74 entries. Extra glitches and missing
-  // edges often cancel numerically, which was the v0.1.9.5 blind spot.
+  if (!looks_like_alecto_waveform(work, static_cast<uint8_t>(signal_count), total_us)) return false;
+
+  // Only collapse extremely narrow spikes here. Wider ambiguous excursions are
+  // intentionally left for the bidirectional DP instead of being guessed away.
   while (signal_count >= 3U) {
     size_t best = signal_count;
-    uint32_t best_width = ALECTO_GLITCH_MAX_US;
+    uint32_t best_width = ALECTO_PRECOLLAPSE_GLITCH_US;
     for (size_t i = 1; i + 1 < signal_count; ++i) {
       if (work[i] < best_width) {
         best = i;
@@ -306,79 +372,127 @@ bool extract_alecto_soft_bits(const std::vector<int32_t> &timings, uint8_t frame
     for (size_t i = best; i + 2 < signal_count; ++i) work[i] = work[i + 2];
     signal_count -= 2U;
   }
+  if (signal_count < 45U || signal_count > ALECTO_MAX_OBSERVED_PULSES) return false;
 
-  if (signal_count > ALECTO_EXPECTED_SIGNAL_PULSES) return false;
-  const uint8_t missing = static_cast<uint8_t>(ALECTO_EXPECTED_SIGNAL_PULSES - signal_count);
-  if ((missing & 1U) != 0U) return false;
-  merge_count = static_cast<uint8_t>(missing / 2U);
-  if (merge_count > ALECTO_MAX_SOFT_MERGES) return false;
+  clear_alecto_pred();
+  for (uint8_t slot = 0; slot < 4U; ++slot) {
+    alecto_cost_row_tag[slot] = -1;
+    for (uint8_t j = 0; j < 74U; ++j) alecto_cost_rows[slot][j] = ALECTO_ALIGN_INF;
+  }
+  uint16_t *row0 = alecto_cost_row(0);
+  row0[0] = 0;
 
-  std::memset(alecto_pred_bits, 0, sizeof(alecto_pred_bits));
-  uint16_t current[74];
-  uint16_t next[74];
-  for (uint8_t j = 0; j < 74; ++j) current[j] = ALECTO_ALIGN_INF;
-  current[0] = 0;
-
-  for (uint8_t observed = 0; observed < signal_count; ++observed) {
-    for (uint8_t j = 0; j < 74; ++j) next[j] = ALECTO_ALIGN_INF;
-    const uint32_t us = work[observed];
+  const uint8_t observed_count = static_cast<uint8_t>(signal_count);
+  for (uint8_t observed = 0; observed <= observed_count; ++observed) {
+    uint16_t *current = alecto_cost_row(observed);
     for (uint8_t expected = 0; expected <= ALECTO_EXPECTED_SIGNAL_PULSES; ++expected) {
-      if (current[expected] == ALECTO_ALIGN_INF) continue;
+      const uint16_t base = current[expected];
+      if (base == ALECTO_ALIGN_INF) continue;
 
-      if (expected < ALECTO_EXPECTED_SIGNAL_PULSES) {
-        const uint8_t position = static_cast<uint8_t>(expected + 1U);  // RFLink pulse index 1..73
-        const uint16_t add = (position & 1U) != 0U ? alecto_short_cost(us) : alecto_data_cost(us).cost;
-        const uint32_t candidate = static_cast<uint32_t>(current[expected]) + add;
-        if (candidate < next[expected + 1U]) {
-          next[expected + 1U] = sat_cost(candidate);
-          set_alecto_pred(static_cast<uint8_t>(observed + 1U), static_cast<uint8_t>(expected + 1U), false);
+      // 1 observed -> 1 expected
+      if (observed < observed_count && expected < ALECTO_EXPECTED_SIGNAL_PULSES) {
+        const uint8_t position = static_cast<uint8_t>(expected + 1U);
+        const uint16_t add = (position & 1U) != 0U ? alecto_short_cost(work[observed])
+                                                   : alecto_data_cost(work[observed]).cost;
+        uint16_t *target = alecto_cost_row(static_cast<uint8_t>(observed + 1U));
+        const uint16_t candidate = sat_cost(static_cast<uint32_t>(base) + add);
+        if (candidate < target[expected + 1U]) {
+          target[expected + 1U] = candidate;
+          set_alecto_pred(static_cast<uint8_t>(observed + 1U), static_cast<uint8_t>(expected + 1U), ALECTO_OP_11);
         }
       }
 
-      if (expected + 3U <= ALECTO_EXPECTED_SIGNAL_PULSES) {
-        const uint16_t add = alecto_merged_three_cost(us, static_cast<uint8_t>(expected + 1U));
-        const uint32_t candidate = static_cast<uint32_t>(current[expected]) + add;
-        if (candidate < next[expected + 3U]) {
-          next[expected + 3U] = sat_cost(candidate);
-          set_alecto_pred(static_cast<uint8_t>(observed + 1U), static_cast<uint8_t>(expected + 3U), true);
+      // 1 observed -> 3 expected (missed edge pair)
+      if (observed < observed_count && expected + 3U <= ALECTO_EXPECTED_SIGNAL_PULSES) {
+        const uint16_t add = alecto_merged_expected_cost(work[observed], static_cast<uint8_t>(expected + 1U));
+        uint16_t *target = alecto_cost_row(static_cast<uint8_t>(observed + 1U));
+        const uint16_t candidate = sat_cost(static_cast<uint32_t>(base) + add);
+        if (candidate < target[expected + 3U]) {
+          target[expected + 3U] = candidate;
+          set_alecto_pred(static_cast<uint8_t>(observed + 1U), static_cast<uint8_t>(expected + 3U), ALECTO_OP_13);
+        }
+      }
+
+      // 3 observed -> 1 expected (extra edge pair)
+      if (observed + 3U <= observed_count && expected < ALECTO_EXPECTED_SIGNAL_PULSES) {
+        const uint8_t position = static_cast<uint8_t>(expected + 1U);
+        const uint16_t add = alecto_split_observed_cost(work[observed], work[observed + 1U], work[observed + 2U], position);
+        uint16_t *target = alecto_cost_row(static_cast<uint8_t>(observed + 3U));
+        const uint16_t candidate = sat_cost(static_cast<uint32_t>(base) + add);
+        if (candidate < target[expected + 1U]) {
+          target[expected + 1U] = candidate;
+          set_alecto_pred(static_cast<uint8_t>(observed + 3U), static_cast<uint8_t>(expected + 1U), ALECTO_OP_31);
         }
       }
     }
-    std::memcpy(current, next, sizeof(current));
   }
 
-  if (current[ALECTO_EXPECTED_SIGNAL_PULSES] == ALECTO_ALIGN_INF) return false;
+  uint16_t *final_row = alecto_cost_row(observed_count);
+  alignment_cost = final_row[ALECTO_EXPECTED_SIGNAL_PULSES];
+  if (alignment_cost == ALECTO_ALIGN_INF || alignment_cost > ALECTO_MAX_ALIGNMENT_COST) return false;
 
-  uint8_t observed = static_cast<uint8_t>(signal_count);
+  uint8_t observed = observed_count;
   uint8_t expected = ALECTO_EXPECTED_SIGNAL_PULSES;
-  while (observed != 0U) {
-    const bool merged_three = get_alecto_pred(observed, expected);
-    const uint32_t us = work[observed - 1U];
-    if (merged_three) {
-      if (expected < 3U) return false;
-      expected = static_cast<uint8_t>(expected - 3U);
-    } else {
-      if (expected == 0U) return false;
+  while (observed != 0U || expected != 0U) {
+    const AlectoAlignOp op = get_alecto_pred(observed, expected);
+    if (op == ALECTO_OP_11) {
+      if (observed < 1U || expected < 1U) return false;
       const uint8_t position = expected;
+      const uint32_t us = work[observed - 1U];
       if ((position & 1U) == 0U) {
         const AlectoDataClass dc = alecto_data_cost(us);
         if (dc.confident) {
           const uint8_t bit = static_cast<uint8_t>(position / 2U - 1U);
-          if (bit >= 36U) return false;
           frame_bits[bit] = dc.bit;
           frame_known[bit] = 1;
-          ++known_count;
         }
       }
+      --observed;
       --expected;
+    } else if (op == ALECTO_OP_13) {
+      if (observed < 1U || expected < 3U) return false;
+      const uint8_t first_expected = static_cast<uint8_t>(expected - 2U);
+      const uint32_t us = work[observed - 1U];
+      if ((first_expected & 1U) != 0U) {
+        const uint32_t zero_target = ALECTO_SHORT_NOMINAL_US + ALECTO_ZERO_NOMINAL_US + ALECTO_SHORT_NOMINAL_US;
+        const uint32_t one_target = ALECTO_SHORT_NOMINAL_US + ALECTO_ONE_NOMINAL_US + ALECTO_SHORT_NOMINAL_US;
+        const uint32_t dz = abs_diff_u32(us, zero_target);
+        const uint32_t d1 = abs_diff_u32(us, one_target);
+        const uint32_t best = std::min(dz, d1);
+        const uint32_t separation = dz > d1 ? dz - d1 : d1 - dz;
+        if (best <= 900U && separation >= 1000U) {
+          const uint8_t bit = static_cast<uint8_t>((first_expected + 1U) / 2U - 1U);
+          if (bit < 36U) {
+            frame_bits[bit] = d1 < dz ? 1U : 0U;
+            frame_known[bit] = 1;
+          }
+        }
+      }
+      --observed;
+      expected = static_cast<uint8_t>(expected - 3U);
+    } else if (op == ALECTO_OP_31) {
+      if (observed < 3U || expected < 1U) return false;
+      const uint8_t position = expected;
+      if ((position & 1U) == 0U) {
+        const uint32_t total = work[observed - 3U] + work[observed - 2U] + work[observed - 1U];
+        const AlectoDataClass dc = alecto_data_cost(total);
+        if (dc.confident) {
+          const uint8_t bit = static_cast<uint8_t>(position / 2U - 1U);
+          frame_bits[bit] = dc.bit;
+          frame_known[bit] = 1;
+        }
+      }
+      observed = static_cast<uint8_t>(observed - 3U);
+      --expected;
+    } else {
+      return false;
     }
-    --observed;
   }
-  if (expected != 0U) return false;
 
-  // Even severely damaged real rows still expose a useful core of data bits.
-  // Below this threshold unrelated RF traffic contributes too little evidence.
-  return known_count >= 18U;
+  for (uint8_t bit = 0; bit < 36U; ++bit) {
+    if (frame_known[bit]) ++known_count;
+  }
+  return known_count >= 22U;
 }
 
 bool prepare_alecto_repeat_recovery(const std::vector<int32_t> &timings) {
@@ -387,8 +501,10 @@ bool prepare_alecto_repeat_recovery(const std::vector<int32_t> &timings) {
   uint8_t frame_bits[36]{};
   uint8_t frame_known[36]{};
   uint8_t known_count = 0;
-  uint8_t merge_count = 0;
-  if (!extract_alecto_soft_bits(timings, frame_bits, frame_known, known_count, merge_count)) return false;
+  uint16_t alignment_cost = ALECTO_ALIGN_INF;
+  if (!extract_alecto_soft_bits(timings, frame_bits, frame_known, known_count, alignment_cost)) return false;
+  ++alecto_soft_frame_count;
+  (void) alignment_cost;
 
   const uint32_t now = millis();
   if (alecto_repeat.last_ms == 0 || static_cast<uint32_t>(now - alecto_repeat.last_ms) > ALECTO_REPEAT_WINDOW_MS)
@@ -401,7 +517,7 @@ bool prepare_alecto_repeat_recovery(const std::vector<int32_t> &timings) {
     uint8_t &vote = frame_bits[bit] ? alecto_repeat.one_votes[bit] : alecto_repeat.zero_votes[bit];
     if (vote < 255) ++vote;
   }
-  if (alecto_repeat.frames < 5) return false;
+  if (alecto_repeat.frames < 5U) return false;
 
   uint8_t majority[36]{};
   for (uint8_t bit = 0; bit < 36; ++bit) {
@@ -409,8 +525,8 @@ bool prepare_alecto_repeat_recovery(const std::vector<int32_t> &timings) {
     const uint8_t o = alecto_repeat.one_votes[bit];
     const uint8_t total = static_cast<uint8_t>(z + o);
     const uint8_t margin = z > o ? static_cast<uint8_t>(z - o) : static_cast<uint8_t>(o - z);
-    // At least two independent observations and a two-vote margin. This makes
-    // recovery conservative: ties and 2:1 disagreements remain unresolved.
+    // Two agreeing observations are enough when there is no disagreement.
+    // If one damaged repeat disagrees, a later repeat must restore a margin of 2.
     if (total < 2U || margin < 2U) return false;
     majority[bit] = o > z ? 1U : 0U;
   }
@@ -428,6 +544,7 @@ bool prepare_alecto_repeat_recovery(const std::vector<int32_t> &timings) {
     RawSignal.Pulses[3 + bit * 2] = static_cast<byte>(480 / RAWSIGNAL_SAMPLE_RATE);
   }
   RawSignal.Pulses[74] = static_cast<byte>(SIGNAL_END_TIMEOUT_US / RAWSIGNAL_SAMPLE_RATE);
+  ++alecto_reconstructed_count;
   return true;
 }
 
@@ -525,11 +642,15 @@ void reset(bool enable_all_compiled) {
   QRFUDebug = false;
   reset_repeat_history();
   reset_alecto_repeat();
+  alecto_soft_frame_count = 0;
+  alecto_reconstructed_count = 0;
   sequence = 0; clear_message(); output.reserve(256);
   rebuild_active_plugin_cache();
 }
 size_t plugin_count() { return RFLINK_TOTAL_PLUGINS; }
 const char *plugin_profile() { return RFLINK_PLUGIN_PROFILE; }
+uint32_t get_alecto_soft_frame_count() { return alecto_soft_frame_count; }
+uint32_t get_alecto_reconstructed_count() { return alecto_reconstructed_count; }
 
 void reset_repeat_history() {
   SignalCRC = 0;

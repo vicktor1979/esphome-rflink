@@ -27,6 +27,13 @@ void reset(bool enable_all_compiled = true);
 size_t plugin_count();
 const char *plugin_profile();
 
+// Cumulative Alecto recovery diagnostics since bridge reset. soft_frame_count
+// counts damaged rows that passed the cheap Alecto waveform gate + alignment;
+// reconstructed_count counts checksum/range-valid canonical rows prepared for
+// the untouched Plugin_030.
+uint32_t get_alecto_soft_frame_count();
+uint32_t get_alecto_reconstructed_count();
+
 // Runtime plugin gate. Only plugins compiled into the current firmware can be changed.
 bool is_plugin_compiled(uint16_t plugin_id);
 bool is_plugin_enabled(uint16_t plugin_id);

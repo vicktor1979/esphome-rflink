@@ -262,9 +262,10 @@ async def to_code(config):
             if not restore:
                 cg.add(sw.set_restore_mode(switch.RESTORE_MODES["ALWAYS_ON"]))
             elif conf[CONF_PLUGIN_ID] == 254:
-                # Unsupported-packet debug is intentionally OFF on its first
-                # boot. Once changed by the user, restore:true keeps that state.
-                cg.add(sw.set_restore_mode(switch.RESTORE_MODES["RESTORE_DEFAULT_OFF"]))
+                # Unsupported-packet debug is a temporary diagnostic mode. It
+                # must never survive an OTA/reboot because a restored ON state
+                # can flood the native API/logger with ambient 433 MHz noise.
+                cg.add(sw.set_restore_mode(switch.RESTORE_MODES["ALWAYS_OFF"]))
         active = await text_sensor.new_text_sensor(plugin_switches[CONF_ACTIVE_PLUGINS])
         cg.add(var.set_active_plugins_text_sensor(active))
 
