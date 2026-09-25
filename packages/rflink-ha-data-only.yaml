@@ -404,7 +404,11 @@ script:
         const std::string device = root["ID"] | "";
         const std::string button = root["SWITCH"] | "";
         const std::string command = root["CMD"] | "";
-        if (protocol.empty() || device.empty()) return false;
+        if (protocol.empty()) return false;
+        // Plugin 254 / RF debug messages intentionally have NAME=DEBUG and no ID.
+        // They are diagnostics, not Home Assistant RF events, so do not warn.
+        if (protocol == "DEBUG") return true;
+        if (device.empty()) return false;
 
         ++id(rflink_api_packet_count);
         // Keep only the newest diagnostic snapshot. Remote events use their own callbacks.

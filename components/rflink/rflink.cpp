@@ -41,7 +41,7 @@ void RFLinkComponent::setup() {
     this->ready_timing_ = false;
     this->auto_running_ = false;
     if (this->build_text_sensor_ != nullptr) {
-      std::string build{"v0.1.9.3 · "};
+      std::string build{"v0.1.9.4 · "};
       build += ::rflink_legacy::plugin_profile();
       build += " · ";
       build += std::to_string(static_cast<unsigned>(::rflink_legacy::plugin_count()));
@@ -375,6 +375,43 @@ bool RFLinkComponent::on_receive(remote_base::RemoteReceiveData data) {
     if (alecto_candidate) {
       ESP_LOGW("rflink.alecto", "%s; plugin030=%s", alecto_diagnostic.c_str(),
                ::rflink_legacy::is_plugin_enabled(30) ? "ON" : "OFF");
+
+      // Plugin 254 keeps its HA summary deliberately short. For 74-pulse
+      // frames, however, the complete waveform is essential to distinguish a
+      // damaged Alecto V1 frame from an unrelated 74-pulse protocol. Log the
+      // full normalized waveform to serial, rate-limited to avoid making RF
+      // reception worse while debugging.
+      static uint32_t last_74_raw_log_ms = 0;
+      const uint32_t raw_now_ms = millis();
+      if (last_74_raw_log_ms == 0 ||
+          static_cast<uint32_t>(raw_now_ms - last_74_raw_log_ms) >= 2000) {
+        last_74_raw_log_ms = raw_now_ms;
+        const auto &raw = data.get_raw_data();
+        size_t first = 0;
+        size_t end = raw.size();
+        while (first < end && raw[first] < 0) ++first;
+        if (end > first && raw[end - 1] <= -5000) --end;
+
+        std::string part1{"74-pulse raw 1/2: "};
+        std::string part2{"74-pulse raw 2/2: "};
+        unsigned pulse_index = 0;
+        for (size_t pos = first; pos < end; ++pos) {
+          const int32_t value = raw[pos];
+          const uint32_t us = static_cast<uint32_t>(value < 0 ? -static_cast<int64_t>(value) : value);
+          ++pulse_index;
+          std::string &dst = pulse_index <= 37 ? part1 : part2;
+          if ((pulse_index != 1 && pulse_index != 38)) dst += ',';
+          dst += std::to_string(us);
+        }
+        if (end > first && raw[end - 1] > 0) {
+          ++pulse_index;
+          std::string &dst = pulse_index <= 37 ? part1 : part2;
+          if ((pulse_index != 1 && pulse_index != 38)) dst += ',';
+          dst += "5000";
+        }
+        ESP_LOGW("rflink.alecto.raw", "%s", part1.c_str());
+        ESP_LOGW("rflink.alecto.raw", "%s", part2.c_str());
+      }
     }
     if (this->log_messages_)
       ESP_LOGD(TAG, "Plugin 254 unsupported RF: %s%s", unsupported.summary.c_str(),
