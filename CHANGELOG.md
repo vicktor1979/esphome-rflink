@@ -6,6 +6,7 @@ Az RFLink ESPHome komponens fontosabb verziói és változásai.
 
 - A Wi-Fi + HA API indulási kapu, 5 s settle és alapból 30 s diagnosztika a komponensbe került (`auto_start: true`); a fő példákból eltűnt a nagy 1 s/10 s YAML `interval`, a hozzá tartozó globals és `on_raw` számláló.
 - RX önjavítás: ring-buffer overflow után azonnali capture-resync; folyamatos, 2,5 s-nál tovább le nem záródó részkeret után automatikus újraszinkronizálás.
+- `high_frequency: false` mellett a receiver korlátozott backlog-drain módot kapott: egy főciklusban legfeljebb 4 már lezárt keretet dolgoz fel, maximum 6 ms extra munkakerettel. Ez megszünteti a lassan felgyűlő ring-buffer torlódást anélkül, hogy visszakapcsolná a Wi-Fi-t korábban zavaró folyamatos fast loopot.
 - Hosszabb RF-csend után a legacy ismétlésszűrő history ürül; receiver-resync és plugin ki/be kapcsolás szintén tiszta repeat state-t indít. Ez a több perc csend után nehezen ébredő távirányító esetét célozza.
 - Új diagnosztika: `recoveries` és `history_resets`, valamint kompakt `RFLink állapot` önjavítás-számlálóval. A fő példák globális logger szintje INFO; csak az `rflink` tag enged DEBUG-ot, és a részletes RF üzeneteket külön HA kapcsoló engedi.
 - Gyorsabb runtime dekóder-dispatch: csak az aktív legacy pluginok kerülnek bejárásra.

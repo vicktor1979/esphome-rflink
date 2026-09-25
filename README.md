@@ -7,7 +7,7 @@ Jelenlegi stabil fejlesztési alap: **v0.1.9 · ESP8266 rxgate2 · runtime plugi
 
 Ez a README a projekt jelenlegi, közösen kipróbált felépítését foglalja össze. **Nem új firmware-verzió és nem teljes forráscsomag:** a mellékelt konfigurációs példák a GitHub-repóban már meglévő komponenseket használják. A dokumentációfrissítés nem módosítja a rádiós dekódereket, a vételi időzítéseket vagy a gesztusfelismerő C++ kódot.
 
-A **v0.1.9** fő célja a gyorsabb és önjavító vételi út: csak az aktív dekódereket járja be, az extended előfeldolgozás csak akkor fut, ha kell, a single-click pedig nem vár fölöslegesen multi-click időablakra. A korábbi YAML-os 1 s/10 s régi indítási és diagnosztikai `interval` logika a komponensbe került (`auto_start: true`). A vevő overflow vagy tartósan lezáratlan impulzussor után saját maga újraszinkronizál, a legacy ismétlésszűrő állapot pedig hosszabb RF-csend után automatikusan ürül. A Home Assistantban megjelenő tanuló/utolsó RF szövegek rövidek; a teljes JSON hibakereséshez továbbra is a naplóban elérhető. A fő példákban a részletes RF üzenetnapló alapból ki van kapcsolva a kisebb futásidejű terhelésért; szükség esetén a **RFLink részletes napló** kapcsolóval ideiglenesen bekapcsolható.
+A **v0.1.9** fő célja a gyorsabb és önjavító vételi út: csak az aktív dekódereket járja be, az extended előfeldolgozás csak akkor fut, ha kell, a single-click pedig nem vár fölöslegesen multi-click időablakra. A korábbi YAML-os 1 s/10 s régi indítási és diagnosztikai `interval` logika a komponensbe került (`auto_start: true`). `high_frequency: false` mellett a vevő egy főciklusban korlátozottan több már lezárt keretet is leürít, így a lassú backlog nem tölti fel a ring buffert; overflow vagy tartósan lezáratlan impulzussor után saját maga újraszinkronizál, a legacy ismétlésszűrő állapot pedig hosszabb RF-csend után automatikusan ürül. A Home Assistantban megjelenő tanuló/utolsó RF szövegek rövidek; a teljes JSON hibakereséshez továbbra is a naplóban elérhető. A fő példákban a részletes RF üzenetnapló alapból ki van kapcsolva a kisebb futásidejű terhelésért; szükség esetén a **RFLink részletes napló** kapcsolóval ideiglenesen bekapcsolható.
 
 Az új, felhasználói felületen használt kapcsolónév: **RFLink figyelés**. A korábbi neve **RFLink dekódolás próba** volt. Meglévő HA-entitás átnevezéséhez először olvasd el a [névkezelési részt](#4-a-figyelési-kapcsoló-átnevezése).
 
@@ -183,7 +183,7 @@ A `capture_enabled` és `high_frequency` **a saját rxgate2 komponens opciói**.
 
 A korábbi forrás ESP8266-os alapkapcsolásában a DATA bemenet D1/GPIO5 volt, és külön D5/GPIO14-es vevőengedélyezés is szerepelt. A most működő konfigurációba emiatt **nem kell utólag találomra tápvezérlő kapcsolót betenni**. Másik hardverre telepítésnél a tényleges tápot, adatvezetéket, engedélyezést és jelszinteket külön ellenőrizni kell.
 
-A bevált `high_frequency: false` mellett az éleket továbbra is a GPIO-megszakítás gyűjti; csak a vevő saját folyamatosan gyorsított főciklus-kérése nincs engedélyezve. A főciklus ritkább kiolvasása nagy forgalomnál túlcsordulást okozhat, ezért az `overflow_reports` és a tényleges vétel együtt figyelendő.
+A bevált `high_frequency: false` mellett az éleket továbbra is a GPIO-megszakítás gyűjti; csak a vevő saját folyamatosan gyorsított főciklus-kérése nincs engedélyezve. A v0.1.9 backlog-drain egy főciklusban legfeljebb 4 már lezárt keretet dolgoz fel, maximum 6 ms extra munkakerettel, ezért a normál ~16 ms-os ütemnél kissé gyorsabb keretáram sem gyűlik fel lassan a ringben. Az `overflow_reports`, `extra_drained` és `max_drain_batch` továbbra is figyelendő.
 
 Az `1200b` az örökölt konfigurációs jelölés: ebben az ESP8266-os megvalósításban 1200 darab 32 bites időzítési elem tárolására kér helyet, vagyis körülbelül **4800 bájt** fő ring buffert. Erre a hosszabb támogatott impulzussorok miatt van szükség.
 
@@ -741,6 +741,8 @@ A fő diagnosztika `AUTO=ON` mezője a figyelési kapcsoló engedélyét tükrö
 | `rx_loop_calls` | A bekapcsolt vevő főciklusbeli feldolgozásainak száma |
 | `overflow_reports` | Észlelt ring-buffer túlcsordulások; v0.1.9-ben automatikus capture-resync követi |
 | `recoveries` | Automatikus RX újraszinkronizálások száma (overflow vagy tartósan lezáratlan impulzussor) |
+| `extra_drained` | Az elsőn felül ugyanabban a főciklusban feldolgozott backlog-keretek száma |
+| `max_drain_batch` | A legnagyobb egy főciklusban feldolgozott keretszám; v0.1.9-ben legfeljebb 4 |
 | `history_resets` | Legacy ismétlésszűrő állapot ürítéseinek száma; hosszabb RF-csend és RX-resync is növelheti |
 | `decode_max_us` | Egy mért dekóderhívás legnagyobb ideje |
 | `callback_max_us` / `frame_callback_max_us` | Üzenet- / keret-visszahívások mért legnagyobb ideje |

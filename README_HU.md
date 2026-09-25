@@ -77,7 +77,7 @@ A pontos machine-readable minta tanulás közben a logban továbbra is megjeleni
 
 ## Több perc csend utáni első gombnyomás
 
-A v0.1.9 két önjavító védelmet tartalmaz: overflow vagy 2,5 s-nál tovább lezáratlan RF részkeret esetén automatikus receiver-resync történik, illetve 1 s-nál hosszabb felismert RF-csend után az első következő dekódolás előtt ürül a legacy repeat history. A `RFLink állapot` jelzi, ha RX-helyreállítás történt; a diagnosztikai logban `recoveries` és `history_resets` számláló is látható.
+A v0.1.9 több védelmet tartalmaz: `high_frequency: false` mellett egy főciklus korlátozottan több már lezárt RF keretet is leürít (legfeljebb 4, legfeljebb 6 ms munkakeret), így a lassan felgyűlő backlog nem tölti meg a ring buffert. Overflow vagy 2,5 s-nál tovább lezáratlan RF részkeret esetén automatikus receiver-resync történik, illetve 1 s-nál hosszabb felismert RF-csend után az első következő dekódolás előtt ürül a legacy repeat history. A `RFLink állapot` jelzi, ha RX-helyreállítás történt; a diagnosztikai logban `recoveries`, `extra_drained`, `max_drain_batch` és `history_resets` számláló is látható.
 
 ## Alecto V1
 
