@@ -51,6 +51,8 @@ class RemoteReceiverComponent final : public remote_base::RemoteReceiverBase, pu
   uint32_t get_edge_count() const { return this->store_.edge_count; }
   uint32_t get_frame_count() const { return this->frame_count_; }
   uint32_t get_recovery_count() const { return this->recovery_count_; }
+  uint32_t get_extra_drained_frames() const { return this->extra_drained_frames_; }
+  uint8_t get_max_drain_batch() const { return this->max_drain_batch_; }
 
  protected:
   void reset_capture_state_();  // call ONLY while our pin interrupt is detached
@@ -67,6 +69,8 @@ class RemoteReceiverComponent final : public remote_base::RemoteReceiverBase, pu
   uint32_t last_overflow_log_ms_{0};
   uint32_t frame_count_{0};
   uint32_t recovery_count_{0};
+  uint32_t extra_drained_frames_{0};
+  uint8_t max_drain_batch_{0};
   uint32_t last_recovery_log_ms_{0};
   uint32_t last_edge_count_seen_{0};
   uint32_t edge_activity_since_ms_{0};

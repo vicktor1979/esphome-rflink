@@ -225,7 +225,7 @@ void RFLinkComponent::update_diagnostics_(uint32_t now, bool network_ready, bool
   if (this->receiver_ == nullptr) return;
 #ifdef USE_ESP8266
   ESP_LOGI("rflink.diag",
-           "AUTO=%s; CAPTURE=%s; DECODE=%s; api_states=%s; network=%s; uptime=%lu s; heap=%u B; max_block=%u B; frag=%u%%; frames=%lu; decoded=%lu; calls=%lu; skipped=%lu; decode_max_us=%lu; callback_max_us=%lu; observed=%lu; frame_callback_max_us=%lu; irq_total=%lu; fast_loop=%s; rx_loop_calls=%lu; overflow_reports=%lu; recoveries=%lu; history_resets=%lu",
+           "AUTO=%s; CAPTURE=%s; DECODE=%s; api_states=%s; network=%s; uptime=%lu s; heap=%u B; max_block=%u B; frag=%u%%; frames=%lu; decoded=%lu; calls=%lu; skipped=%lu; decode_max_us=%lu; callback_max_us=%lu; observed=%lu; frame_callback_max_us=%lu; irq_total=%lu; fast_loop=%s; rx_loop_calls=%lu; overflow_reports=%lu; recoveries=%lu; extra_drained=%lu; max_drain_batch=%u; history_resets=%lu",
            this->monitoring_enabled_ ? "ON" : "OFF",
            this->receiver_->is_capture_enabled() ? "ON" : "OFF", this->decode_enabled_ ? "ON" : "OFF",
            api_ready ? "YES" : "NO", network_ready ? "CONNECTED" : "DISCONNECTED",
@@ -240,6 +240,8 @@ void RFLinkComponent::update_diagnostics_(uint32_t now, bool network_ready, bool
            static_cast<unsigned long>(this->receiver_->get_loop_calls()),
            static_cast<unsigned long>(this->receiver_->get_overflow_reports()),
            static_cast<unsigned long>(this->receiver_->get_recovery_count()),
+           static_cast<unsigned long>(this->receiver_->get_extra_drained_frames()),
+           static_cast<unsigned>(this->receiver_->get_max_drain_batch()),
            static_cast<unsigned long>(this->repeat_history_resets_));
 #else
   ESP_LOGI("rflink.diag",

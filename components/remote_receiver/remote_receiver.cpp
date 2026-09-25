@@ -3,7 +3,8 @@
 // The original ESP8266 pulse collection algorithm is retained. Additions:
 // pre-setup capture gate, pin-IRQ detach/reattach, ring reset, edge counter.
 // rxgate2: independently configurable high-frequency-loop request.
-// The ISR, filter, timestamping and frame reconstruction are unchanged.
+// ISR/filter/timestamping/frame reconstruction remain upstream-compatible;
+// main-loop draining adds bounded backlog catch-up for high_frequency:false.
 #include "remote_receiver.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/helpers.h"
@@ -179,55 +180,83 @@ void RemoteReceiverComponent::loop() {
     this->recover_capture_("stalled partial frame");
     return;
   }
-  if (s.overflow) {
-    ++this->overflow_reports_;
-    ++this->overflow_log_pending_;
-    s.overflow = false;
-    const uint32_t now_ms = millis();
-    // A noisy/continuous RF source can overflow repeatedly. Logging every loop
-    // makes recovery worse on ESP8266, so keep the exact counter but aggregate
-    // warnings to at most one line per 5 seconds.
-    if (this->last_overflow_log_ms_ == 0 ||
-        static_cast<uint32_t>(now_ms - this->last_overflow_log_ms_) >= 5000) {
-      ESP_LOGW(TAG, "Buffer overflow (%lu since last log; total=%lu)",
-               static_cast<unsigned long>(this->overflow_log_pending_),
-               static_cast<unsigned long>(this->overflow_reports_));
-      this->overflow_log_pending_ = 0;
-      this->last_overflow_log_ms_ = now_ms;
+
+  // With high_frequency:false ESPHome may service component loops at roughly a
+  // 16 ms cadence. The upstream receiver consumes only one completed RF frame
+  // per loop; a noisy 433 MHz input that produces completed frames only a little
+  // faster than that can therefore fill the ring slowly (the field failure was
+  // reproducible at ~92 s with a 1200-entry buffer). Drain a small bounded batch
+  // of already-completed frames per scheduler turn. This raises burst capacity
+  // without restoring the always-fast loop that previously hurt ESP8266 Wi-Fi.
+  static constexpr uint8_t MAX_FRAMES_PER_LOOP = 4;
+  static constexpr uint32_t MAX_DRAIN_TIME_US = 6000;
+  const uint32_t drain_started_us = micros();
+  uint8_t drained_this_loop = 0;
+
+  while (drained_this_loop < MAX_FRAMES_PER_LOOP) {
+    // The first frame is always serviced. Before taking any additional queued
+    // frame, enforce the elapsed-work budget so a slow decoder/callback cannot
+    // turn backlog catch-up into another Wi-Fi starvation source.
+    if (drained_this_loop != 0 &&
+        static_cast<uint32_t>(micros() - drain_started_us) >= MAX_DRAIN_TIME_US)
+      break;
+
+    if (s.overflow) {
+      ++this->overflow_reports_;
+      ++this->overflow_log_pending_;
+      s.overflow = false;
+      const uint32_t overflow_now_ms = millis();
+      // A noisy/continuous RF source can overflow repeatedly. Logging every loop
+      // makes recovery worse on ESP8266, so keep the exact counter but aggregate
+      // warnings to at most one line per 5 seconds.
+      if (this->last_overflow_log_ms_ == 0 ||
+          static_cast<uint32_t>(overflow_now_ms - this->last_overflow_log_ms_) >= 5000) {
+        ESP_LOGW(TAG, "Buffer overflow (%lu since last log; total=%lu)",
+                 static_cast<unsigned long>(this->overflow_log_pending_),
+                 static_cast<unsigned long>(this->overflow_reports_));
+        this->overflow_log_pending_ = 0;
+        this->last_overflow_log_ms_ = overflow_now_ms;
+      }
+      // A ring overflow leaves the current packet undefined. Previously we only
+      // cleared the flag, so stale indices could take several later transmissions
+      // to converge. Re-arm immediately; this is the same cleanup users got from
+      // manually toggling capture, without reallocating the buffer.
+      this->recover_capture_("buffer overflow", false);
+      return;
     }
-    // A ring overflow leaves the current packet undefined. Previously we only
-    // cleared the flag, so stale indices could take several later transmissions
-    // to converge. Re-arm immediately; this is the same cleanup users got from
-    // manually toggling capture, without reallocating the buffer.
-    this->recover_capture_("buffer overflow", false);
-    return;
-  }
-  uint32_t last_index = s.buffer_start;
-  if (last_index == s.buffer_read) {
-    InterruptLock lock;
-    if (s.buffer_read == s.buffer_start && s.buffer_write != s.buffer_start &&
-        micros() - s.prev_micros >= this->idle_us_) {
-      commit_value(&s, s.prev_micros, s.prev_level);
-      write_value(&s, s.idle_us, !s.commit_level);
-      last_index = s.buffer_start;
+
+    uint32_t last_index = s.buffer_start;
+    if (last_index == s.buffer_read) {
+      InterruptLock lock;
+      if (s.buffer_read == s.buffer_start && s.buffer_write != s.buffer_start &&
+          micros() - s.prev_micros >= this->idle_us_) {
+        commit_value(&s, s.prev_micros, s.prev_level);
+        write_value(&s, s.idle_us, !s.commit_level);
+        last_index = s.buffer_start;
+      }
     }
+    if (last_index == s.buffer_read) break;
+
+    uint32_t temp_read = s.buffer_read;
+    uint32_t reserve_size = 0;
+    while (temp_read != last_index && (uint32_t) std::abs(s.buffer[temp_read]) < this->idle_us_) {
+      reserve_size++;
+      temp_read++;
+      if (temp_read >= s.buffer_size) temp_read = 0;
+    }
+    this->temp_.clear();
+    this->temp_.reserve(reserve_size + 1);
+    for (uint32_t i = 0; i < reserve_size + 1; i++) {
+      this->temp_.push_back((int32_t) s.buffer[s.buffer_read++]);
+      if (s.buffer_read >= s.buffer_size) s.buffer_read = 0;
+    }
+    ++this->frame_count_;
+    ++drained_this_loop;
+    if (drained_this_loop > 1) ++this->extra_drained_frames_;
+    if (drained_this_loop > this->max_drain_batch_) this->max_drain_batch_ = drained_this_loop;
+    this->edge_activity_pending_ = false;
+    this->call_listeners_dumpers_();
   }
-  if (last_index == s.buffer_read) return;
-  uint32_t temp_read = s.buffer_read;
-  uint32_t reserve_size = 0;
-  while (temp_read != last_index && (uint32_t) std::abs(s.buffer[temp_read]) < this->idle_us_) {
-    reserve_size++;
-    temp_read++;
-    if (temp_read >= s.buffer_size) temp_read = 0;
-  }
-  this->temp_.clear();
-  this->temp_.reserve(reserve_size + 1);
-  for (uint32_t i = 0; i < reserve_size + 1; i++) {
-    this->temp_.push_back((int32_t) s.buffer[s.buffer_read++]);
-    if (s.buffer_read >= s.buffer_size) s.buffer_read = 0;
-  }
-  ++this->frame_count_;
-  this->edge_activity_pending_ = false;
-  this->call_listeners_dumpers_();
 }
+
 }  // namespace esphome::remote_receiver
