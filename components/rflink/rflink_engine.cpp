@@ -270,6 +270,166 @@ std::string enabled_plugins_csv() {
   return result;
 }
 
+bool diagnose_alecto_v1_candidate(const std::vector<int32_t> &timings, std::string &summary) {
+  summary.clear();
+  if (timings.empty()) return false;
+
+  size_t first = 0, end = timings.size();
+  while (first < end && timings[first] < 0) ++first;
+  if (first == end) return false;
+  if (end > first && timings[end - 1] <= -SIGNAL_END_TIMEOUT_US) --end;
+  if (end == first) return false;
+  const bool append_timeout = timings[end - 1] > 0;
+  const size_t count = end - first + (append_timeout ? 1 : 0);
+  if (count != 74) return false;
+
+  // Store the exact values seen by Plugin_030 after the legacy 32 us
+  // quantisation. Indexing deliberately mirrors RawSignal.Pulses (1..74).
+  uint16_t pulse_ticks[75]{};
+  size_t dest = 1;
+  for (size_t pos = first; pos < end; ++pos) {
+    const int64_t signed_value = timings[pos];
+    const uint64_t us = signed_value < 0 ? -signed_value : signed_value;
+    if (us == 0 || us > std::numeric_limits<int32_t>::max()) {
+      summary = "AlectoV1 candidate: reject=invalid pulse";
+      return true;
+    }
+    if (((pos - first) % 2 == 0) != (signed_value > 0)) {
+      char b[96];
+      std::snprintf(b, sizeof(b), "AlectoV1 candidate: reject=non-alternating pulse %u",
+                    static_cast<unsigned>(dest));
+      summary = b;
+      return true;
+    }
+    const uint64_t ticks = us / RAWSIGNAL_SAMPLE_RATE;
+    if (ticks == 0) {
+      char b[96];
+      std::snprintf(b, sizeof(b), "AlectoV1 candidate: reject=sub-%uus pulse %u",
+                    static_cast<unsigned>(RAWSIGNAL_SAMPLE_RATE), static_cast<unsigned>(dest));
+      summary = b;
+      return true;
+    }
+    pulse_ticks[dest++] = static_cast<uint16_t>(std::min<uint64_t>(ticks, 255));
+  }
+  if (append_timeout) pulse_ticks[dest++] = SIGNAL_END_TIMEOUT_US / RAWSIGNAL_SAMPLE_RATE;
+  if (dest - 1 != 74) {
+    summary = "AlectoV1 candidate: reject=normalisation count";
+    return true;
+  }
+
+  constexpr uint16_t ALECTO_MIDHI_TICKS = 700 / RAWSIGNAL_SAMPLE_RATE;
+  constexpr uint16_t ALECTO_BIT_TICKS = 2560 / RAWSIGNAL_SAMPLE_RATE;
+  uint32_t bitstream = 0;
+  for (uint8_t x = 2; x <= 64; x += 2) {
+    if (pulse_ticks[x + 1] > ALECTO_MIDHI_TICKS) {
+      char b[160];
+      std::snprintf(b, sizeof(b),
+                    "AlectoV1 candidate: reject=separator pulse %u is %uus (> %uus)",
+                    static_cast<unsigned>(x + 1),
+                    static_cast<unsigned>(pulse_ticks[x + 1] * RAWSIGNAL_SAMPLE_RATE),
+                    static_cast<unsigned>(ALECTO_MIDHI_TICKS * RAWSIGNAL_SAMPLE_RATE));
+      summary = b;
+      return true;
+    }
+    bitstream >>= 1;
+    if (pulse_ticks[x] > ALECTO_BIT_TICKS) bitstream |= (0x1UL << 31);
+  }
+
+  uint8_t checksum = 0;
+  for (uint8_t x = 66; x <= 72; x += 2) {
+    checksum >>= 1;
+    if (pulse_ticks[x] > ALECTO_BIT_TICKS) checksum |= (0x1U << 3);
+  }
+  if (bitstream == 0) {
+    summary = "AlectoV1 candidate: reject=zero bitstream";
+    return true;
+  }
+
+  uint8_t data[8]{};
+  uint8_t checksumcalc = 0;
+  for (uint8_t i = 0; i < 8; ++i) {
+    data[i] = static_cast<uint8_t>((bitstream >> (4 * i)) & 0xF);
+    checksumcalc = static_cast<uint8_t>(checksumcalc + data[i]);
+  }
+  if ((data[2] & 0x06) != 0x06)
+    checksumcalc = static_cast<uint8_t>((0xF - checksumcalc) & 0xF);
+  else if ((data[3] & 0x07) == 0x03)
+    checksumcalc = static_cast<uint8_t>((0x7 + checksumcalc) & 0xF);
+  else
+    checksumcalc = static_cast<uint8_t>((0xF - checksumcalc) & 0xF);
+
+  const uint8_t rc = static_cast<uint8_t>((data[1] << 4) | data[0]);
+  const unsigned display_id = static_cast<unsigned>(((rc & 0x03) << 2) | (rc & 0xFC));
+
+  if (checksum != checksumcalc) {
+    char b[192];
+    std::snprintf(b, sizeof(b),
+                  "AlectoV1 candidate: ID=%04X; reject=checksum got=%X expected=%X; bits=%08lX",
+                  display_id, static_cast<unsigned>(checksum), static_cast<unsigned>(checksumcalc),
+                  static_cast<unsigned long>(bitstream));
+    summary = b;
+    return true;
+  }
+
+  const bool temperature_packet = (data[2] & 0x06) != 0x06;
+  if (temperature_packet) {
+    const uint8_t d3 = static_cast<uint8_t>(data[3] & 0x07);
+    int temperature = static_cast<int>((data[5] << 8) | (data[4] << 4) | d3);
+    const uint8_t humidity = static_cast<uint8_t>((data[7] << 4) | data[6]);
+    if ((temperature & 0x800) != 0) {
+      const int magnitude = 4096 - temperature;
+      if (magnitude > 0x258) {
+        char b[160];
+        std::snprintf(b, sizeof(b), "AlectoV1 candidate: ID=%04X; reject=temp -%d.%dC out of range",
+                      display_id, magnitude / 10, magnitude % 10);
+        summary = b;
+        return true;
+      }
+      if (humidity > 0x99) {
+        char b[160];
+        std::snprintf(b, sizeof(b), "AlectoV1 candidate: ID=%04X; TEMP=-%d.%dC; reject=HUM BCD %02X",
+                      display_id, magnitude / 10, magnitude % 10, static_cast<unsigned>(humidity));
+        summary = b;
+        return true;
+      }
+      char b[192];
+      std::snprintf(b, sizeof(b),
+                    "AlectoV1 candidate: ID=%04X; TEMP=-%d.%dC; HUM_BCD=%02X; checksum=OK; would pass Plugin_030",
+                    display_id, magnitude / 10, magnitude % 10, static_cast<unsigned>(humidity));
+      summary = b;
+      return true;
+    }
+
+    if (temperature > 0x258) {
+      char b[160];
+      std::snprintf(b, sizeof(b), "AlectoV1 candidate: ID=%04X; reject=temp %d.%dC out of range",
+                    display_id, temperature / 10, temperature % 10);
+      summary = b;
+      return true;
+    }
+    if (humidity > 0x99) {
+      char b[160];
+      std::snprintf(b, sizeof(b), "AlectoV1 candidate: ID=%04X; TEMP=%d.%dC; reject=HUM BCD %02X",
+                    display_id, temperature / 10, temperature % 10, static_cast<unsigned>(humidity));
+      summary = b;
+      return true;
+    }
+    char b[192];
+    std::snprintf(b, sizeof(b),
+                  "AlectoV1 candidate: ID=%04X; TEMP=%d.%dC; HUM_BCD=%02X; checksum=OK; would pass Plugin_030",
+                  display_id, temperature / 10, temperature % 10, static_cast<unsigned>(humidity));
+    summary = b;
+    return true;
+  }
+
+  char b[192];
+  std::snprintf(b, sizeof(b),
+                "AlectoV1 candidate: ID=%04X; packet=rain/wind; checksum=OK; would pass Plugin_030",
+                display_id);
+  summary = b;
+  return true;
+}
+
 bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObservation *observation,
             UnsupportedObservation *unsupported) {
   if (observation != nullptr) *observation = FrameObservation{};

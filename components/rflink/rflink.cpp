@@ -41,7 +41,7 @@ void RFLinkComponent::setup() {
     this->ready_timing_ = false;
     this->auto_running_ = false;
     if (this->build_text_sensor_ != nullptr) {
-      std::string build{"v0.1.9.1 · "};
+      std::string build{"v0.1.9.3 · "};
       build += ::rflink_legacy::plugin_profile();
       build += " · ";
       build += std::to_string(static_cast<unsigned>(::rflink_legacy::plugin_count()));
@@ -103,7 +103,7 @@ void RFLinkComponent::loop() {
 }
 
 void RFLinkComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.9.1 (optimized active dispatch; adaptive self-healing RX):");
+  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.9.3 (adaptive RX; Alecto candidate diagnostics):");
   ESP_LOGCONFIG(TAG, "  Plugin profile: %s", rflink_legacy::plugin_profile());
   ESP_LOGCONFIG(TAG, "  RX plugins compiled: %u", static_cast<unsigned>(::rflink_legacy::plugin_count()));
   ESP_LOGCONFIG(TAG, "  RX plugins enabled: %u", static_cast<unsigned>(::rflink_legacy::enabled_plugin_count()));
@@ -359,10 +359,23 @@ bool RFLinkComponent::on_receive(remote_base::RemoteReceiveData data) {
     if (frame_us > this->max_frame_callback_us_) this->max_frame_callback_us_ = frame_us;
   }
   if (unsupported.valid) {
-    if (this->unsupported_signal_text_sensor_ != nullptr)
-      this->unsupported_signal_text_sensor_->publish_state(unsupported.summary);
+    std::string alecto_diagnostic;
+    const bool alecto_candidate = unsupported.pulse_count == 74 &&
+        ::rflink_legacy::diagnose_alecto_v1_candidate(data.get_raw_data(), alecto_diagnostic);
+
+    if (this->unsupported_signal_text_sensor_ != nullptr) {
+      // A 74-pulse Alecto candidate is far more useful in HA when we expose
+      // the exact Plugin_030 reject reason instead of only a truncated pulse list.
+      this->unsupported_signal_text_sensor_->publish_state(
+          alecto_candidate ? alecto_diagnostic : unsupported.summary);
+    }
     if (this->unsupported_pulse_count_sensor_ != nullptr)
       this->unsupported_pulse_count_sensor_->publish_state(unsupported.pulse_count);
+
+    if (alecto_candidate) {
+      ESP_LOGW("rflink.alecto", "%s; plugin030=%s", alecto_diagnostic.c_str(),
+               ::rflink_legacy::is_plugin_enabled(30) ? "ON" : "OFF");
+    }
     if (this->log_messages_)
       ESP_LOGD(TAG, "Plugin 254 unsupported RF: %s%s", unsupported.summary.c_str(),
                unsupported.truncated ? " [HA summary truncated]" : "");

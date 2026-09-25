@@ -1,22 +1,26 @@
-RFLink ESPHome v0.1.9.2 - Alecto rolling-ID fix
+ESPHome RFLink v0.1.9.3 - Alecto V1 74-pulse diagnostic
 
-Copy the contents of this ZIP over the repository root.
-It contains the current v0.1.9.1 receiver/backlog fixes plus the updated
-packages/rflink-alecto-006c.yaml.
+Cumulative upload-ready files. Extract/copy into the repository root, preserving paths.
+This package includes the v0.1.9.1 receiver backlog fix and v0.1.9.2 rolling-ID package fix.
 
-Why the Alecto package changed:
-RFLink Plugin_030 treats the Alecto V1 sensor ID as a rolling code. A battery
-replacement/reset can change the previous 006C ID. The old package silently
-ignored every Alecto V1 frame whose ID was not exactly 006C.
+Changed/cumulative files:
+  components/rflink/rflink.cpp
+  components/rflink/rflink_engine.cpp
+  components/rflink/rflink_engine.h
+  components/remote_receiver/remote_receiver.cpp
+  components/remote_receiver/remote_receiver.h
+  packages/rflink-alecto-006c.yaml
 
-The updated package:
-- accepts any decoded NAME="Alecto V1" ID;
-- preserves the existing Alecto 006C temperature/battery entity names;
-- adds humidity;
-- adds "Alecto V1 aktuális RF ID" diagnostic text sensor;
-- logs only when the received Alecto RF ID changes;
-- does not modify RFLink/Plugins/Plugin_030.c.
+What is new in v0.1.9.3:
+- Original RFLink/Plugins/Plugin_030.c is NOT modified.
+- When Plugin 254 receives an unsupported 74-pulse frame, the bridge mirrors
+  Plugin_030's checks and reports the exact first reject reason.
+- Diagnostic examples:
+    AlectoV1 candidate: ID=0074; reject=checksum got=... expected=...; plugin030=ON
+    AlectoV1 candidate: ... checksum=OK; would pass Plugin_030; plugin030=OFF
+- The Home Assistant "RFLink ismeretlen jel" entity shows the Alecto diagnostic
+  instead of a truncated raw pulse list for 74-pulse candidates.
+- All other unsupported frames retain the old raw pulse summary.
 
-IMPORTANT: Runtime Plugin 030 still has to be ON.
-If the RFLink active plugins entity does not contain 030, use the existing
-"RF pluginok alaphelyzet" button or turn on the Plugin 030 switch.
+For field diagnosis enable Plugin 254 temporarily (RF debug 60 masodperc) and
+ensure RFLink aktiv pluginok contains 030 while the debug capture runs.

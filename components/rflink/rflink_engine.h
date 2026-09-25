@@ -33,6 +33,13 @@ bool is_plugin_enabled(uint16_t plugin_id);
 bool set_plugin_enabled(uint16_t plugin_id, bool enabled);
 size_t enabled_plugin_count();
 std::string enabled_plugins_csv();
+
+// Diagnose a legacy Alecto V1 (Plugin 030) candidate without changing or bypassing
+// the original RFLink plugin. Returns true only when the normalized frame has the
+// Alecto V1 pulse count (74); summary then explains the first Plugin_030 reject
+// reason or reports that the frame would pass Plugin_030.
+bool diagnose_alecto_v1_candidate(const std::vector<int32_t> &timings, std::string &summary);
+
 // Clear only duplicate/repeat history; plugin enable masks and sequence stay unchanged.
 void reset_repeat_history();
 
