@@ -33,6 +33,8 @@ bool is_plugin_enabled(uint16_t plugin_id);
 bool set_plugin_enabled(uint16_t plugin_id, bool enabled);
 size_t enabled_plugin_count();
 std::string enabled_plugins_csv();
+// Clear only duplicate/repeat history; plugin enable masks and sequence stay unchanged.
+void reset_repeat_history();
 
 // Returns recognized=true even when an RFLink plugin suppresses a duplicate.
 // Only a nonempty output JSON represents an event that should be published.

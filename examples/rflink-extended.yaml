@@ -7,24 +7,12 @@
 # The original RFLink/Plugins sources remain unchanged.
 # TX is not implemented.
 substitutions:
-  rf_api_settle_ms: "5000"
-  rf_capture_permitted: "true"
   rflink_full_json_parts: "false"
   rflink_api_snapshot_interval: 1s
 
 esphome:
   name: rflink-esphome
   friendly_name: RFLink ESPHome
-  on_boot:
-    priority: -100
-    then:
-      - lambda: |-
-          id(rf_receiver).set_capture_enabled(false);
-          id(rf_bridge).set_decode_enabled(false);
-          id(rf_start_gate).reset();
-          id(rflink_build).publish_state("v0.1.9 · extended");
-          id(rflink_health).publish_state("OK");
-          ESP_LOGI("rflink.auto", "CAPTURE and DECODE wait for Home Assistant API; RX fast loop disabled");
 
 esp8266:
   board: nodemcuv2
@@ -45,90 +33,31 @@ external_components:
     refresh: 5min
 
 api:
-  id: api_main
   encryption:
     key: !secret rflink_api_key
   reboot_timeout: 0s
 
 wifi:
-  id: wifi_main
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-  on_disconnect:
-    then:
-      - lambda: |-
-          id(rf_receiver).set_capture_enabled(false);
-          id(rf_bridge).set_decode_enabled(false);
-          id(rf_start_gate).reset();
-          id(rf_probe_api_states) = false;
 
 logger:
-  level: DEBUG
+  level: INFO
+  # Only the decoded RFLink message tag is allowed at DEBUG; the HA switch
+  # decides whether those lines are actually emitted.
+  logs:
+    rflink: DEBUG
 
 ota:
   - platform: esphome
     password: !secret ota_password
+    # The RFLink component owns the full stop/restart sequence.
     on_begin:
       then:
-        - lambda: |-
-            id(rf_ota_active) = true;
-            id(rf_receiver).set_capture_enabled(false);
-            id(rf_bridge).set_decode_enabled(false);
-            id(rf_start_gate).reset();
+        - lambda: id(rf_bridge).set_ota_active(true);
     on_error:
       then:
-        - lambda: |-
-            id(rf_ota_active) = false;
-            id(rf_start_gate).reset();
-
-time:
-  - platform: sntp
-    id: rflink_time
-    timezone: Europe/Budapest
-
-text_sensor:
-  - platform: wifi_info
-    ip_address:
-      id: rflink_ip
-      internal: true
-    mac_address:
-      id: rflink_mac
-      internal: true
-  - platform: template
-    id: rflink_build
-    name: "RFLink build"
-    icon: mdi:information-outline
-    entity_category: diagnostic
-    update_interval: never
-  - platform: template
-    id: rflink_health
-    name: "RFLink állapot"
-    icon: mdi:heart-pulse
-    entity_category: diagnostic
-    update_interval: never
-
-sensor:
-  - platform: wifi_signal
-    id: rflink_rssi
-    internal: true
-    update_interval: 60s
-
-globals:
-  - id: rf_start_gate
-    type: esphome::rflink_data::ReadyGate
-    restore_value: false
-  - id: rf_ota_active
-    type: bool
-    restore_value: false
-    initial_value: 'false'
-  - id: rf_probe_api_states
-    type: bool
-    restore_value: false
-    initial_value: 'false'
-  - id: rf_probe_frames
-    type: uint32_t
-    restore_value: false
-    initial_value: '0'
+        - lambda: id(rf_bridge).set_ota_active(false);
 
 remote_receiver:
   id: rf_receiver
@@ -141,10 +70,7 @@ remote_receiver:
   filter: 100us
   idle: 5ms
   buffer_size: 1200b  # v0.1.7: 1058-element LaCrosse burst; +800 bytes ring storage versus 1000
-  # NO dump. Only one RAM counter; no per-frame log or HA publication.
-  on_raw:
-    then:
-      - lambda: ++id(rf_probe_frames);
+  # No raw dump/logging in normal operation. Frame/recovery counters are internal.
 
 rflink:
   id: rf_bridge
@@ -152,6 +78,10 @@ rflink:
 
   rx_plugins: all
   plugin_profile: extended
+
+  # Built-in Wi-Fi + HA API gate, 5 s settle, monitoring/build/health entities.
+  # Replaces the old YAML globals + 1 s/10 s interval lambdas.
+  auto_start: true
 
   # All 55 plugin IDs are compiled into the firmware.
   # At runtime only the plugins listed here can be enabled.
@@ -190,25 +120,7 @@ rflink:
             id: rflink_api_process
             message: !lambda return x;
 
-# User-facing name for a new installation. Internal references stay unchanged.
-# ON grants permission; actual capture/decode still waits for Wi-Fi + HA API.
-# Existing HA registration: changing firmware name may create a new entity.
-# For a display-only rename, keep the old firmware name and rename it in HA.
 switch:
-  - platform: template
-    id: rf_decode_test
-    name: "RFLink figyelés"
-    icon: mdi:radio-tower
-    entity_category: config
-    optimistic: true
-    restore_mode: ALWAYS_ON
-    turn_off_action:
-      - lambda: |-
-          id(rf_receiver).set_capture_enabled(false);
-          id(rf_bridge).set_decode_enabled(false);
-          id(rf_start_gate).reset();
-
-
   # The getter reflects automatic timeout too; learning is OFF after reboot.
   - platform: template
     id: rf_learning_switch
@@ -232,75 +144,6 @@ switch:
       - lambda: id(rf_bridge).set_log_messages(true);
     turn_off_action:
       - lambda: id(rf_bridge).set_log_messages(false);
-
-binary_sensor:
-  - platform: template
-    id: rf_decode_active
-    name: "RFLink dekódolás aktív"
-    entity_category: diagnostic
-    icon: mdi:radio-tower
-
-interval:
-  - interval: 1s
-    then:
-      - if:
-          condition:
-            api.connected:
-              state_subscription_only: true
-          then:
-            - lambda: id(rf_probe_api_states) = true;
-          else:
-            - lambda: id(rf_probe_api_states) = false;
-      - lambda: |-
-          const bool ready = id(wifi_main).is_connected() &&
-              id(rf_probe_api_states) && id(rf_decode_test).state && !id(rf_ota_active) &&
-              ${rf_capture_permitted};
-          const bool enable = id(rf_start_gate).update(millis(), ready, ${rf_api_settle_ms});
-          const bool was_enabled = id(rf_bridge).is_decode_enabled();
-          const bool was_capturing = id(rf_receiver).is_capture_enabled();
-          id(rf_receiver).set_capture_enabled(enable);
-          const bool actually_enabled = enable && id(rf_receiver).is_capture_enabled();
-          id(rf_bridge).set_decode_enabled(actually_enabled);
-          if (!id(rf_decode_active).has_state() || id(rf_decode_active).state != actually_enabled)
-            id(rf_decode_active).publish_state(actually_enabled);
-          if (was_enabled != actually_enabled || was_capturing != id(rf_receiver).is_capture_enabled()) {
-            ESP_LOGI("rflink.auto", "CAPTURE=%s; DECODE=%s; api_states=%s; wifi=%s",
-                     id(rf_receiver).is_capture_enabled() ? "ON" : "OFF",
-                     actually_enabled ? "ON" : "OFF", id(rf_probe_api_states) ? "YES" : "NO",
-                     id(wifi_main).is_connected() ? "CONNECTED" : "DISCONNECTED");
-          }
-  - interval: 10s
-    then:
-      - lambda: |-
-          ESP_LOGI("rflink.diag",
-              "AUTO=%s; CAPTURE=%s; DECODE=%s; api_states=%s; uptime=%lu s; wifi=%s; heap=%u B; max_block=%u B; frag=%u%%; frames=%lu; decoded=%lu; calls=%lu; skipped=%lu; decode_max_us=%lu; callback_max_us=%lu; snapshot_max_us=%lu; observed=%lu; frame_callback_max_us=%lu; irq_total=%lu; fast_loop=%s; rx_loop_calls=%lu; overflow_reports=%lu",
-              id(rf_decode_test).state ? "ON" : "OFF",
-              id(rf_receiver).is_capture_enabled() ? "ON" : "OFF",
-              id(rf_bridge).is_decode_enabled() ? "ON" : "OFF",
-              id(rf_probe_api_states) ? "YES" : "NO",
-              static_cast<unsigned long>(millis() / 1000),
-              id(wifi_main).is_connected() ? "CONNECTED" : "DISCONNECTED",
-              static_cast<unsigned>(ESP.getFreeHeap()),
-              static_cast<unsigned>(ESP.getMaxFreeBlockSize()),
-              static_cast<unsigned>(ESP.getHeapFragmentation()),
-              static_cast<unsigned long>(id(rf_probe_frames)),
-              static_cast<unsigned long>(id(rflink_api_packet_count)),
-              static_cast<unsigned long>(id(rf_bridge).get_decode_calls()),
-              static_cast<unsigned long>(id(rf_bridge).get_skipped_frames()),
-              static_cast<unsigned long>(id(rf_bridge).get_max_decode_us()),
-              static_cast<unsigned long>(id(rf_bridge).get_max_callback_us()),
-              static_cast<unsigned long>(id(rflink_api_snapshot_max_us)),
-              static_cast<unsigned long>(id(rf_bridge).get_observed_frames()),
-              static_cast<unsigned long>(id(rf_bridge).get_max_frame_callback_us()),
-              static_cast<unsigned long>(id(rf_receiver).get_edge_count()),
-              id(rf_receiver).is_high_frequency_requested() ? "ON" : "OFF",
-              static_cast<unsigned long>(id(rf_receiver).get_loop_calls()),
-              static_cast<unsigned long>(id(rf_receiver).get_overflow_reports()));
-          const uint32_t overflows = id(rf_receiver).get_overflow_reports();
-          const std::string health = overflows == 0 ? "OK" :
-              "RX overflow · " + std::to_string(static_cast<unsigned long>(overflows));
-          if (!id(rflink_health).has_state() || id(rflink_health).state != health)
-            id(rflink_health).publish_state(health);
 
 # A future OTA can be performed with RF completely inactive in safe mode.
 button:

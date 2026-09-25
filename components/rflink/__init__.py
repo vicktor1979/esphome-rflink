@@ -5,14 +5,14 @@ import logging
 from esphome import automation
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import remote_base, sensor, switch, text_sensor
+from esphome.components import binary_sensor, remote_base, sensor, switch, text_sensor
 from esphome.const import CONF_ID, CONF_NAME, CONF_TRIGGER_ID
 from esphome.core import CORE
 
 from .stage_sources import select_plugins, stage
 
 DEPENDENCIES = ["remote_receiver"]
-AUTO_LOAD = ["remote_base", "sensor", "switch", "text_sensor"]
+AUTO_LOAD = ["binary_sensor", "remote_base", "sensor", "switch", "text_sensor"]
 MULTI_CONF = False
 CODEOWNERS = []
 
@@ -28,6 +28,15 @@ CONF_ACTIVE_PLUGINS = "active_plugins"
 CONF_UNSUPPORTED_SIGNAL = "unsupported_signal"
 CONF_SIGNAL = "signal"
 CONF_PULSE_COUNT = "pulse_count"
+CONF_AUTO_START = "auto_start"
+CONF_SETTLE_TIME = "settle_time"
+CONF_DIAGNOSTICS_INTERVAL = "diagnostics_interval"
+CONF_REQUIRE_NETWORK = "require_network"
+CONF_REQUIRE_API = "require_api"
+CONF_MONITORING = "monitoring"
+CONF_DECODE_ACTIVE = "decode_active"
+CONF_HEALTH = "health"
+CONF_BUILD = "build"
 _LOGGER = logging.getLogger(__name__)
 REPO = Path(__file__).resolve().parents[2]
 
@@ -53,6 +62,7 @@ PLUGIN_NAMES = {
 ns = cg.esphome_ns.namespace("rflink")
 RFLinkComponent = ns.class_("RFLinkComponent", cg.Component, remote_base.RemoteReceiverListener)
 RFLinkPluginSwitch = ns.class_("RFLinkPluginSwitch", switch.Switch, cg.Component)
+RFLinkMonitoringSwitch = ns.class_("RFLinkMonitoringSwitch", switch.Switch, cg.Component)
 RFLinkMessageTrigger = ns.class_("RFLinkMessageTrigger", automation.Trigger.template(cg.std_string))
 
 
@@ -107,6 +117,59 @@ UNSUPPORTED_SIGNAL_SCHEMA = cv.Schema({
 })
 
 
+MONITORING_SWITCH_SCHEMA = switch.switch_schema(
+    RFLinkMonitoringSwitch,
+    default_restore_mode="ALWAYS_ON",
+    entity_category="config",
+    icon="mdi:radio-tower",
+).extend(cv.COMPONENT_SCHEMA)
+
+
+AUTO_START_SCHEMA = cv.Schema({
+    cv.Optional(CONF_SETTLE_TIME, default="5s"): cv.positive_time_period_milliseconds,
+    cv.Optional(CONF_DIAGNOSTICS_INTERVAL, default="30s"): cv.positive_time_period_milliseconds,
+    cv.Optional(CONF_REQUIRE_NETWORK, default=True): cv.boolean,
+    cv.Optional(CONF_REQUIRE_API, default=True): cv.boolean,
+    cv.Optional(
+        CONF_MONITORING,
+        default={CONF_NAME: "RFLink figyelés"},
+    ): MONITORING_SWITCH_SCHEMA,
+    cv.Optional(
+        CONF_DECODE_ACTIVE,
+        default={CONF_NAME: "RFLink dekódolás aktív"},
+    ): binary_sensor.binary_sensor_schema(
+        entity_category="diagnostic",
+        icon="mdi:radio-tower",
+    ),
+    cv.Optional(
+        CONF_HEALTH,
+        default={CONF_NAME: "RFLink állapot"},
+    ): text_sensor.text_sensor_schema(
+        entity_category="diagnostic",
+        icon="mdi:heart-pulse",
+    ),
+    cv.Optional(
+        CONF_BUILD,
+        default={CONF_NAME: "RFLink build"},
+    ): text_sensor.text_sensor_schema(
+        entity_category="diagnostic",
+        icon="mdi:information-outline",
+    ),
+})
+
+
+def validate_auto_start(value):
+    # `auto_start: true` is the compact form. Omitting auto_start preserves
+    # pre-v0.1.9 behaviour for MQTT-only/legacy external-component users.
+    if value is True:
+        value = {}
+    elif value is False:
+        return False
+    if not isinstance(value, dict):
+        raise cv.Invalid("auto_start must be true, false, or a mapping")
+    return AUTO_START_SCHEMA(value)
+
+
 PLUGIN_SWITCHES_SCHEMA = cv.Schema({
     cv.Optional(CONF_RESTORE, default=True): cv.boolean,
     cv.Required(CONF_PLUGINS): cv.ensure_list(validate_plugin_switch),
@@ -145,6 +208,7 @@ CONFIG_SCHEMA = cv.All(
         cv.Optional(CONF_RX_PLUGINS, default="configured"): validate_plugins,
         cv.Optional(CONF_PLUGIN_PROFILE, default="legacy"): cv.one_of("legacy", "extended", lower=True),
         cv.Optional(CONF_LOG_MESSAGES, default=True): cv.boolean,
+        cv.Optional(CONF_AUTO_START): validate_auto_start,
         cv.Optional(CONF_PLUGIN_SWITCHES): PLUGIN_SWITCHES_SCHEMA,
         cv.Optional(CONF_ON_MESSAGE): automation.validate_automation({
             cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(RFLinkMessageTrigger),
@@ -163,7 +227,29 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await remote_base.register_listener(var, config)
+    receiver = await cg.get_variable(config[remote_base.CONF_RECEIVER_ID])
+    cg.add(var.set_receiver(receiver))
     cg.add(var.set_log_messages(config[CONF_LOG_MESSAGES]))
+
+    auto_start = config.get(CONF_AUTO_START)
+    if auto_start is not None and auto_start is not False:
+        cg.add_define("USE_RFLINK_AUTO_START")
+        cg.add(var.set_auto_start_enabled(True))
+        cg.add(var.set_auto_start_settle_ms(auto_start[CONF_SETTLE_TIME].total_milliseconds))
+        cg.add(var.set_diagnostics_interval_ms(auto_start[CONF_DIAGNOSTICS_INTERVAL].total_milliseconds))
+        cg.add(var.set_require_network(auto_start[CONF_REQUIRE_NETWORK]))
+        cg.add(var.set_require_api(auto_start[CONF_REQUIRE_API]))
+
+        monitoring = cg.new_Pvariable(auto_start[CONF_MONITORING][CONF_ID], var)
+        await cg.register_component(monitoring, auto_start[CONF_MONITORING])
+        await switch.register_switch(monitoring, auto_start[CONF_MONITORING])
+
+        decode_active = await binary_sensor.new_binary_sensor(auto_start[CONF_DECODE_ACTIVE])
+        health = await text_sensor.new_text_sensor(auto_start[CONF_HEALTH])
+        build = await text_sensor.new_text_sensor(auto_start[CONF_BUILD])
+        cg.add(var.set_decode_active_sensor(decode_active))
+        cg.add(var.set_health_text_sensor(health))
+        cg.add(var.set_build_text_sensor(build))
 
     plugin_switches = config.get(CONF_PLUGIN_SWITCHES)
     cg.add(var.set_plugin_switch_mode(plugin_switches is not None))

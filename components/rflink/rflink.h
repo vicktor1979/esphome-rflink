@@ -14,11 +14,18 @@
 #include "esphome/components/sensor/sensor.h"
 
 namespace esphome {
+namespace binary_sensor {
+class BinarySensor;
+}
+namespace remote_receiver {
+class RemoteReceiverComponent;
+}
 namespace rflink {
 
 class RFLinkComponent : public Component, public remote_base::RemoteReceiverListener {
  public:
   void setup() override;
+  void loop() override;
   void dump_config() override;
   bool on_receive(remote_base::RemoteReceiveData data) override;
   void set_log_messages(bool enabled) { this->log_messages_ = enabled; }
@@ -32,6 +39,23 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   uint32_t get_max_callback_us() const { return this->max_callback_us_; }
   uint32_t get_observed_frames() const { return this->observed_frames_; }
   uint32_t get_max_frame_callback_us() const { return this->max_frame_callback_us_; }
+  uint32_t get_repeat_history_resets() const { return this->repeat_history_resets_; }
+
+  // Optional v0.1.9 built-in startup/diagnostics controller. It is compiled in
+  // only when auto_start is configured, preserving old external-component use.
+  void set_receiver(remote_receiver::RemoteReceiverComponent *receiver) { this->receiver_ = receiver; }
+  void set_auto_start_enabled(bool enabled) { this->auto_start_enabled_ = enabled; }
+  void set_auto_start_settle_ms(uint32_t value) { this->auto_start_settle_ms_ = value; }
+  void set_diagnostics_interval_ms(uint32_t value) { this->diagnostics_interval_ms_ = value; }
+  void set_require_network(bool value) { this->require_network_ = value; }
+  void set_require_api(bool value) { this->require_api_ = value; }
+  void set_monitoring_enabled(bool enabled);
+  bool is_monitoring_enabled() const { return this->monitoring_enabled_; }
+  void set_ota_active(bool active);
+  bool is_ota_active() const { return this->ota_active_; }
+  void set_decode_active_sensor(binary_sensor::BinarySensor *sensor) { this->decode_active_sensor_ = sensor; }
+  void set_health_text_sensor(text_sensor::TextSensor *sensor) { this->health_text_sensor_ = sensor; }
+  void set_build_text_sensor(text_sensor::TextSensor *sensor) { this->build_text_sensor_ = sensor; }
 
   bool set_plugin_enabled(uint16_t plugin_id, bool enabled);
   bool is_plugin_enabled(uint16_t plugin_id) const;
@@ -56,6 +80,16 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   }
 
  protected:
+  void reset_runtime_history_(const char *reason);
+#ifdef USE_RFLINK_AUTO_START
+  bool network_ready_() const;
+  bool api_ready_() const;
+  void apply_auto_state_(bool enabled);
+  void publish_health_(const char *state);
+  void update_health_(bool network_ready, bool api_ready);
+  void update_diagnostics_(uint32_t now, bool network_ready, bool api_ready);
+#endif
+
   bool log_messages_{true};
   bool plugin_switch_mode_{false};
   bool decode_enabled_{true};
@@ -66,6 +100,29 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   uint32_t max_callback_us_{0};
   uint32_t observed_frames_{0};
   uint32_t max_frame_callback_us_{0};
+  uint32_t last_recognized_ms_{0};
+  uint32_t repeat_history_resets_{0};
+  bool repeat_history_dirty_{false};
+
+  remote_receiver::RemoteReceiverComponent *receiver_{nullptr};
+  binary_sensor::BinarySensor *decode_active_sensor_{nullptr};
+  text_sensor::TextSensor *health_text_sensor_{nullptr};
+  text_sensor::TextSensor *build_text_sensor_{nullptr};
+  bool auto_start_enabled_{false};
+  bool monitoring_enabled_{true};
+  bool ota_active_{false};
+  bool require_network_{true};
+  bool require_api_{true};
+  bool auto_running_{false};
+  bool ready_timing_{false};
+  uint32_t ready_since_ms_{0};
+  uint32_t auto_start_settle_ms_{5000};
+  uint32_t diagnostics_interval_ms_{30000};
+  uint32_t last_auto_check_ms_{0};
+  uint32_t last_diagnostics_ms_{0};
+  uint32_t last_receiver_recovery_count_{0};
+  std::string last_health_;
+
   text_sensor::TextSensor *active_plugins_text_sensor_{nullptr};
   text_sensor::TextSensor *unsupported_signal_text_sensor_{nullptr};
   sensor::Sensor *unsupported_pulse_count_sensor_{nullptr};
@@ -87,6 +144,17 @@ class RFLinkPluginSwitch : public switch_::Switch, public Component {
   void write_state(bool state) override;
   RFLinkComponent *parent_;
   uint16_t plugin_id_;
+};
+
+class RFLinkMonitoringSwitch : public switch_::Switch, public Component {
+ public:
+  explicit RFLinkMonitoringSwitch(RFLinkComponent *parent) : parent_(parent) {}
+  void setup() override;
+  void dump_config() override;
+
+ protected:
+  void write_state(bool state) override;
+  RFLinkComponent *parent_;
 };
 
 class RFLinkMessageTrigger : public Trigger<std::string> {

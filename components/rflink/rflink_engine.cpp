@@ -202,16 +202,23 @@ void reset(bool enable_all_compiled) {
   // legacy debug flags OFF until the runtime switch explicitly enables it.
   RFUDebug = false;
   QRFUDebug = false;
-#if RFLINK_PROFILE_EXTENDED
-  rf_ext::reset_history();
-#endif
-  SignalCRC = SignalCRC_1 = RepeatingTimer = 0;
-  SignalHash = 0; SignalHashPrevious = 255;
+  reset_repeat_history();
   sequence = 0; clear_message(); output.reserve(256);
   rebuild_active_plugin_cache();
 }
 size_t plugin_count() { return RFLINK_TOTAL_PLUGINS; }
 const char *plugin_profile() { return RFLINK_PLUGIN_PROFILE; }
+
+void reset_repeat_history() {
+  SignalCRC = 0;
+  SignalCRC_1 = 0;
+  RepeatingTimer = 0;
+  SignalHash = 0;
+  SignalHashPrevious = 255;
+#if RFLINK_PROFILE_EXTENDED
+  rf_ext::reset_history();
+#endif
+}
 
 bool is_plugin_compiled(uint16_t plugin_id) {
   for (const auto id : RFLINK_COMPILED_PLUGIN_IDS)
@@ -235,6 +242,10 @@ bool set_plugin_enabled(uint16_t plugin_id, bool enabled) {
     RFUDebug = enabled;
     QRFUDebug = false;
   }
+  // A runtime OFF/ON cycle is also an explicit recovery action. Clear stale
+  // duplicate/repeat state so the first fresh packet is never suppressed by
+  // history left behind by an earlier session.
+  reset_repeat_history();
   rebuild_active_plugin_cache();
   return true;
 }

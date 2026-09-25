@@ -64,13 +64,28 @@ int main(){
  pass("changing high-frequency mode in mid-frame does not reset GPIO capture or lose synthetic frame");
  // Simulate a stalled consumer: overflow must be observable, not called packet loss count.
  const auto reports=rx.get_overflow_reports();
+ const auto recoveries=rx.get_recovery_count();
  for(unsigned i=0;i<1600;++i){capture_clock+=300;test_millis=capture_clock/1000;pin.set_level(!pin.level);}
  rx.loop();next_poll=capture_clock+period;
- assert(rx.get_overflow_reports()>reports);
- rx.set_capture_enabled(false);rx.set_capture_enabled(true);
+ assert(rx.get_overflow_reports()>reports && rx.get_recovery_count()>recoveries);
  before=observations;frame(0x853728);wait_us(64000);
  assert(observations==before+1);
- pass("consumer-stall overflow is reported and receiver recovers after capture gate reset");
+ pass("consumer-stall overflow is reported, ring indices self-reset, and next valid frame decodes without manual toggle");
+
+ // Continuous sub-idle RF noise below ring capacity must also self-resync after
+ // 2.5 s instead of leaving a partial capture alive indefinitely.
+ const auto stall_recoveries=rx.get_recovery_count();
+ for(unsigned i=0;i<850;++i){
+   capture_clock+=3000;test_millis=capture_clock/1000;pin.set_level(!pin.level);
+   if((i%4)==0) rx.loop();
+ }
+ rx.loop();next_poll=capture_clock+period;
+ assert(rx.get_recovery_count()>stall_recoveries);
+ // Let any few post-recovery noise edges close at the normal idle boundary.
+ wait_us(6000);rx.loop();next_poll=capture_clock+period;
+ before=observations;frame(0x853738);wait_us(64000);
+ assert(observations==before+1);
+ pass("continuous partial/noise capture auto-resynchronizes after 2.5 s and first later frame decodes");
  rx.on_shutdown();
  assert(!pin.attached()&&!esphome::HighFrequencyLoopRequester::is_high_frequency());
  std::cout<<"LIMIT: no ESPHome scheduler, Wi-Fi, Xtensa compiler or hardware in this simulation.\n";

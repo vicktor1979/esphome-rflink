@@ -64,6 +64,30 @@ void RemoteReceiverComponent::reset_capture_state_() {
   s.prev_level = level;
   s.commit_level = level;
   this->temp_.clear();  // retain capacity; no allocation on every reconnection
+  this->edge_activity_pending_ = false;
+  this->last_edge_count_seen_ = s.edge_count;
+}
+
+
+void RemoteReceiverComponent::recover_capture_(const char *reason, bool log_warning) {
+  if (!this->capture_ready_ || !this->capture_active_ || this->is_failed()) return;
+  // The ring contents are already unusable after overflow/stall. Re-arm only
+  // our GPIO interrupt; do not touch Wi-Fi/system interrupts or reallocate RAM.
+  this->pin_->detach_interrupt();
+  this->reset_capture_state_();
+  this->pin_->attach_interrupt(RemoteReceiverComponentStore::gpio_intr, &this->store_, gpio::INTERRUPT_ANY_EDGE);
+  ++this->recovery_count_;
+  this->edge_activity_pending_ = false;
+  this->last_edge_count_seen_ = this->store_.edge_count;
+  if (log_warning) {
+    const uint32_t now_ms = millis();
+    if (this->last_recovery_log_ms_ == 0 ||
+        static_cast<uint32_t>(now_ms - this->last_recovery_log_ms_) >= 5000) {
+      ESP_LOGW(TAG, "RX gate: capture resynchronized after %s (recoveries=%lu)", reason,
+               static_cast<unsigned long>(this->recovery_count_));
+      this->last_recovery_log_ms_ = now_ms;
+    }
+  }
 }
 
 void RemoteReceiverComponent::setup() {
@@ -137,6 +161,24 @@ void RemoteReceiverComponent::loop() {
   if (!this->capture_active_ || this->is_failed()) return;
   ++this->loop_calls_;
   auto &s = this->store_;
+  const uint32_t now_ms = millis();
+  const uint32_t edges_now = s.edge_count;
+  if (edges_now != this->last_edge_count_seen_) {
+    if (!this->edge_activity_pending_) {
+      this->edge_activity_pending_ = true;
+      this->edge_activity_since_ms_ = now_ms;
+    }
+    this->last_edge_count_seen_ = edges_now;
+  }
+  // If RF edges keep arriving but a frame never reaches the normal 5 ms idle
+  // boundary, the ring can remain wedged by noise/partial traffic. A supported
+  // RFLink packet is far shorter than 2.5 s (including the long LaCrosse test),
+  // so resynchronize only after this deliberately generous timeout.
+  if (this->edge_activity_pending_ &&
+      static_cast<uint32_t>(now_ms - this->edge_activity_since_ms_) >= 2500) {
+    this->recover_capture_("stalled partial frame");
+    return;
+  }
   if (s.overflow) {
     ++this->overflow_reports_;
     ++this->overflow_log_pending_;
@@ -153,6 +195,12 @@ void RemoteReceiverComponent::loop() {
       this->overflow_log_pending_ = 0;
       this->last_overflow_log_ms_ = now_ms;
     }
+    // A ring overflow leaves the current packet undefined. Previously we only
+    // cleared the flag, so stale indices could take several later transmissions
+    // to converge. Re-arm immediately; this is the same cleanup users got from
+    // manually toggling capture, without reallocating the buffer.
+    this->recover_capture_("buffer overflow", false);
+    return;
   }
   uint32_t last_index = s.buffer_start;
   if (last_index == s.buffer_read) {
@@ -178,6 +226,8 @@ void RemoteReceiverComponent::loop() {
     this->temp_.push_back((int32_t) s.buffer[s.buffer_read++]);
     if (s.buffer_read >= s.buffer_size) s.buffer_read = 0;
   }
+  ++this->frame_count_;
+  this->edge_activity_pending_ = false;
   this->call_listeners_dumpers_();
 }
 }  // namespace esphome::remote_receiver

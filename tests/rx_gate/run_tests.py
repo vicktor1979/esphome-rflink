@@ -41,6 +41,9 @@ def main():
     assert config['remote_receiver']['filter']=='100us' and config['remote_receiver']['idle']=='5ms'
     assert config['remote_receiver']['buffer_size']=='1200b'
     assert 'dump' not in config['remote_receiver'] and 'mqtt' not in config
+    assert config['rflink']['auto_start'] is True
+    assert 'interval' not in config and 'globals' not in config
+    assert 'on_raw' not in config['remote_receiver']
     ids=[]
     for doc in [config,load(repo/'packages/rflink-ha-data-only.yaml')]:
         for section in ['globals','event','binary_sensor','sensor','text_sensor','switch','script']:
@@ -61,17 +64,9 @@ def main():
         for f in (repo/'RFLink/Plugins').glob('Plugin_*.c'):
             assert (src/'rflink_vendor/Plugins'/(f.name+'.inc')).read_bytes()==f.read_bytes()
         passed('All 48 RX plugins staged; generated plugin text byte-identical.')
-        funcs={
-            'auto_step':config['interval'][0]['then'][-1]['lambda'],
-            'manual_off':config['switch'][0]['turn_off_action'][0]['lambda'],
-            'ota_begin':config['ota'][0]['on_begin']['then'][0]['lambda'],
-            'ota_error':config['ota'][0]['on_error']['then'][0]['lambda'],
-            'wifi_lost':config['wifi']['on_disconnect']['then'][0]['lambda'],
-        }
-        (t/'yaml_gate_functions.inc').write_text('\n'.join('void '+name+'(){\n'+translate(body,config['substitutions'])+'\n}' for name,body in funcs.items()))
-        cmd=['g++','-std=gnu++20','-DESP8266','-DUSE_ESP8266','-Wall','-Wextra','-g',
+        cmd=['g++','-std=gnu++20','-DESP8266','-DUSE_ESP8266','-DUSE_RFLINK_AUTO_START','-DUSE_NETWORK','-DUSE_API','-Wall','-Wextra','-g',
              '-fno-pie','-no-pie','-fsanitize=address,undefined','-fno-omit-frame-pointer','-DRFLINK_TEST_STRICT_PROGMEM',
-             '-I'+str(HERE/'stubs'),'-I'+str(src),'-I'+str(t),'-I'+str(repo/'components/rflink'),
+             '-I'+str(HERE/'stubs'),'-I'+str(src),'-I'+str(repo/'components/rflink'),
              '-I'+str(repo/'components/remote_receiver'),
              str(repo/'components/remote_receiver/remote_receiver.cpp'),
              str(repo/'components/rflink/rflink.cpp'),str(repo/'components/rflink/rflink_engine.cpp'),
@@ -80,7 +75,7 @@ def main():
         result=subprocess.run(cmd,env=env,text=True,capture_output=True,timeout=90)
         (out/'capture_compile.log').write_text('$ '+' '.join(cmd)+'\n'+result.stdout+result.stderr+f'\nEXIT {result.returncode}\n')
         if result.returncode:raise RuntimeError(result.stderr)
-        passed('Actual modified receiver + actual RFLink v0.1.5 bridge + all 48 RX plugins compile under host GNU C++20.')
+        passed('Actual self-healing receiver + v0.1.9 built-in startup gate + all 48 RX plugins compile under host GNU C++20.')
         result=subprocess.run([str(t/'test_capture')],env=env,text=True,capture_output=True,timeout=30)
         (out/'capture_run.log').write_text(result.stdout+result.stderr+f'\nEXIT {result.returncode}\n')
         if result.returncode:raise RuntimeError(result.stdout+result.stderr)

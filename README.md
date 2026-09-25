@@ -7,7 +7,7 @@ Jelenlegi stabil fejlesztési alap: **v0.1.9 · ESP8266 rxgate2 · runtime plugi
 
 Ez a README a projekt jelenlegi, közösen kipróbált felépítését foglalja össze. **Nem új firmware-verzió és nem teljes forráscsomag:** a mellékelt konfigurációs példák a GitHub-repóban már meglévő komponenseket használják. A dokumentációfrissítés nem módosítja a rádiós dekódereket, a vételi időzítéseket vagy a gesztusfelismerő C++ kódot.
 
-A **v0.1.9** fő célja a gyorsabb, kiszámíthatóbb vételi út: csak az aktív dekódereket járja be, az extended előfeldolgozás csak akkor fut, ha kell, a single-click pedig nem vár fölöslegesen multi-click időablakra. A Home Assistantban megjelenő tanuló/utolsó RF szövegek rövidek; a teljes JSON hibakereséshez továbbra is a naplóban elérhető. A fő példákban a részletes RF üzenetnapló alapból ki van kapcsolva a kisebb futásidejű terhelésért; szükség esetén a **RFLink részletes napló** kapcsolóval ideiglenesen bekapcsolható.
+A **v0.1.9** fő célja a gyorsabb és önjavító vételi út: csak az aktív dekódereket járja be, az extended előfeldolgozás csak akkor fut, ha kell, a single-click pedig nem vár fölöslegesen multi-click időablakra. A korábbi YAML-os 1 s/10 s régi indítási és diagnosztikai `interval` logika a komponensbe került (`auto_start: true`). A vevő overflow vagy tartósan lezáratlan impulzussor után saját maga újraszinkronizál, a legacy ismétlésszűrő állapot pedig hosszabb RF-csend után automatikusan ürül. A Home Assistantban megjelenő tanuló/utolsó RF szövegek rövidek; a teljes JSON hibakereséshez továbbra is a naplóban elérhető. A fő példákban a részletes RF üzenetnapló alapból ki van kapcsolva a kisebb futásidejű terhelésért; szükség esetén a **RFLink részletes napló** kapcsolóval ideiglenesen bekapcsolható.
 
 Az új, felhasználói felületen használt kapcsolónév: **RFLink figyelés**. A korábbi neve **RFLink dekódolás próba** volt. Meglévő HA-entitás átnevezéséhez először olvasd el a [névkezelési részt](#4-a-figyelési-kapcsoló-átnevezése).
 
@@ -109,11 +109,10 @@ components/
 packages/
   rflink-ha-data-only.yaml
 examples/
-  rflink.yaml                      # ehhez a README-hez adott teljes példa
-  konyhai-taviranyito.yaml         # részlet, nem önálló firmware-konfiguráció
-  tanult-taviranyito.yaml          # a képen látott 085372/08 minta
-  mas-protokoll.yaml               # helykitöltős message-minta
-  synthetic-all-fields.json        # jelölt, mesterséges mezőpélda
+  rflink.yaml                      # teljes legacy/original profilú példa
+  rflink-extended.yaml             # teljes 55 pluginos extended példa
+  fragments/                       # beilleszthető távirányító/MQTT/szenzor részletek
+  generated/                       # generátor által készíthető példa
 FIELD_MAP.json                     # az érzékelő-generátorhoz
 FIELD_MAP.md
 README.md
@@ -125,49 +124,39 @@ A `.ci/`, `.github/` és `tests/` könyvtárak fejlesztési/ellenőrzési célú
 
 A saját valódi `secrets.yaml` **az ESPHome konfigurációs környezetében maradjon**, ne kerüljön nyilvános repóba. A dokumentációs ZIP nem tartalmaz valódi jelszót, firmware-binárist vagy komponenskód-cserét.
 
-## 4. A figyelési kapcsoló átnevezése
+## 4. RFLink figyelés és beépített automatikus indítás
 
-Új megjelenítési név: **RFLink figyelés**.
-
-Ez az elnevezés azt fejezi ki, hogy a kapcsoló a vétel és a dekódolás **engedélye**, nem egyszeri tesztindítás. Bekapcsolt állapota még nem jelenti, hogy a vevő már fut: a Wi-Fi/API indulási feltételeinek is teljesülniük kell.
-
-### Meglévő eszköz: csak a HA-ban változtasd a megjelenítési nevet
-
-A legkisebb kockázatú változtatás:
-
-1. Nyisd meg a **RFLink dekódolás próba** entitást a Home Assistantban.
-2. Fogaskerék / entitásbeállítások → **Név: RFLink figyelés**.
-3. Az **entitásazonosítót hagyd változatlanul**, és mentsd el.
-
-Ehhez nincs új fordítás vagy feltöltés. A Home Assistantban csak a megjelenítési név módosítása nem változtatja meg az automatizmusokban használt `entity_id` hivatkozást. [Külső háttér: HA entitás-testreszabás][ha-names]
-
-### Új konfigurációban vagy tudatos firmware-átnevezésnél
-
-A meglévő kapcsolóban csak a `name` módosuljon; a teljes kapcsolólogika maradjon meg:
+A v0.1.9-ben a fő vételi engedélyt már maga az `rflink` komponens hozza létre. A teljes példákban elég:
 
 ```yaml
-switch:
-  - platform: template
-    id: rf_decode_test
-    name: "RFLink figyelés"
-    icon: mdi:radio-tower
-    entity_category: config
-    optimistic: true
-    restore_mode: ALWAYS_ON
-    turn_off_action:
-      - lambda: |-
-          id(rf_receiver).set_capture_enabled(false);
-          id(rf_bridge).set_decode_enabled(false);
-          id(rf_start_gate).reset();
+rflink:
+  id: rf_bridge
+  receiver_id: rf_receiver
+  auto_start: true
 ```
 
-**Ne hozz létre újabb `switch:` blokkot; a meglévő listatagot módosítsd.** Az `id: rf_decode_test` régi belső név marad, mert a lambdák erre hivatkoznak. A régi belső név nem látszik kapcsolónévként a felhasználónak.
+Ez létrehozza a **RFLink figyelés** konfigurációs kapcsolót, a **RFLink dekódolás aktív** bináris diagnosztikát, valamint az **RFLink állapot** és **RFLink build** szöveges diagnosztikát. Nincs külön `rf_decode_test` template kapcsoló, `rf_start_gate` global vagy 1 másodperces YAML `interval` lambda.
 
-Fontos különbség: az ESPHome belső `id` nem azonos a HA `entity_id`-val vagy annak regisztrációs azonosítójával. Az ESPHome firmware-beli `name` módosítása az API-n közölt azonosítást is megváltoztathatja, ezért **az `id` megtartása önmagában nem garantálja a régi HA-entitás megőrzését**. Az ESPHome 2026.9.0 névből is származtat entitáskulcsokat. [Külső háttér: ESPHome entitásalap][entity-base]
+Az alap viselkedés:
 
-Az `examples/rflink.yaml` már az új nevet használja. Meglévő telepítésre nem kell emiatt az egész fájlt feltölteni. Firmware-beli névcsere után ellenőrizd, keletkezett-e új HA-kapcsoló; a régi bejegyzést csak a hivatkozások ellenőrzése után takarítsd el. Az egész ESPHome-integráció törlése nem szükséges.
+- `RFLink figyelés` induláskor ON (`ALWAYS_ON`);
+- vétel indulás előtt Wi-Fi és HA API állapotfeliratkozás szükséges;
+- ezek stabil fennállása után 5 másodperc múlva indul a capture + decode;
+- figyelés OFF, kapcsolatvesztés vagy OTA alatt capture + decode leáll;
+- visszatéréskor újra kivárja az 5 másodperces stabilizációt.
 
-Az **RFLink dekódolás aktív** diagnosztikai szenzor nevét ebben a dokumentációfrissítésben nem változtattuk meg. Ez a tényleges működést mutatja, ezért jól elkülönül az engedélyező kapcsolótól.
+Haladó beállításnál az `auto_start` mappingként is megadható, például:
+
+```yaml
+rflink:
+  auto_start:
+    settle_time: 5s
+    diagnostics_interval: 30s
+    require_network: true
+    require_api: true
+```
+
+A napi használathoz az egyszerű `auto_start: true` ajánlott.
 
 ## 5. Hardver és vételi beállítások
 
@@ -187,7 +176,7 @@ remote_receiver:
     mode: INPUT
   filter: 100us
   idle: 5ms
-  buffer_size: 1000b
+  buffer_size: 1200b
 ```
 
 A `capture_enabled` és `high_frequency` **a saját rxgate2 komponens opciói**. A gyári `remote_receiver` nem feltétlenül ismeri őket. A megadott GPIO és polaritás a közös próbákban használt bekötéshez tartozik, nem tetszőleges vevő automatikus bekötési útmutatója.
@@ -196,9 +185,9 @@ A korábbi forrás ESP8266-os alapkapcsolásában a DATA bemenet D1/GPIO5 volt, 
 
 A bevált `high_frequency: false` mellett az éleket továbbra is a GPIO-megszakítás gyűjti; csak a vevő saját folyamatosan gyorsított főciklus-kérése nincs engedélyezve. A főciklus ritkább kiolvasása nagy forgalomnál túlcsordulást okozhat, ezért az `overflow_reports` és a tényleges vétel együtt figyelendő.
 
-Az `1000b` az örökölt konfigurációs jelölés. Ebben az ESP8266-os megvalósításban a fő puffer `1000` darab 32 bites időzítési elem, vagyis körülbelül **4000 bájt**, nem a teljes vevő 1000 bájtos memóriaigénye. További feldolgozási tárolók is vannak.
+Az `1200b` az örökölt konfigurációs jelölés: ebben az ESP8266-os megvalósításban 1200 darab 32 bites időzítési elem tárolására kér helyet, vagyis körülbelül **4800 bájt** fő ring buffert. Erre a hosszabb támogatott impulzussorok miatt van szükség.
 
-A fő mintában az `on_raw` csak egy memóriabeli csomagszámlálót növel. **Nincs `dump: raw` és nincs impulzussoronkénti naplókiírás.** A számláló nem az érvényes gombnyomások számát mutatja.
+A v0.1.9 fő mintáiban nincs `on_raw` csomagszámláló és nincs `dump: raw`. A `remote_receiver` saját belső `frames`, `irq_total`, `overflow_reports` és `recoveries` számlálókat tart fenn, így a diagnosztika nem igényel minden nyers keretre YAML automationt.
 
 ## 6. Telepítés és konfigurációfrissítés
 
@@ -263,7 +252,7 @@ Bekapcsolás / újraindítás
     → CAPTURE=ON, DECODE=ON, fast_loop=OFF
 ```
 
-A feltételeket egy másodperces időzítés ellenőrzi. Az öt másodperc nem a táp bekapcsolásakor indul, és egy csak naplót olvasó kliens nem elég hozzá. A feltétel `api.connected` + `state_subscription_only: true`. [Külső háttér: natív API][api]
+A feltételeket a komponens belső, könnyű állapotgépe ellenőrzi (tipikusan 100 ms-os kapuzással); nincs hozzá YAML `interval`. Az öt másodperc nem a táp bekapcsolásakor indul, hanem attól, hogy a hálózat és a HA API állapotfeliratkozás folyamatosan készen áll. Egy csak naplót olvasó kliens nem elég hozzá. [Külső háttér: natív API][api]
 
 | HA-kezelőszerv | Mit jelent? |
 |---|---|
@@ -500,7 +489,7 @@ Egy eseménybejegyzés saját `timing:` blokkal is kaphat eltérő beállítást
 
 ## 12. Konyhai lámpa: single és hold_repeat
 
-A kért, már elkészített konfiguráció: [examples/konyhai-taviranyito.yaml](examples/konyhai-taviranyito.yaml). A teljes fő példába ez már be van építve.
+A kért, már elkészített konfiguráció: [examples/fragments/ev1527-light-control.yaml](examples/fragments/ev1527-light-control.yaml). A teljes fő példa szándékosan nem tartalmaz saját RF-ID-t vagy Home Assistant lámpaazonosítót.
 
 A kötés:
 
@@ -705,7 +694,7 @@ Ez az eredeti dekóder-JSON-t küldi; a régi MQTT-rendszer egyedi `TIME`, `IP`,
 
 ## 16. OTA és biztonsági mód
 
-A fő konfiguráció OTA-kezdéskor beállítja az `rf_ota_active` jelzőt, leállítja a gyűjtést és a dekódolást, majd alaphelyzetbe teszi az indítási vezérlést. OTA-hibánál törli az OTA-jelzőt; újraindulás után a szokásos hálózati feltételek érvényesek.
+A fő konfiguráció OTA-kezdéskor csak `id(rf_bridge).set_ota_active(true)` hívást ad a komponensnek. A komponens leállítja a dekódolást és a saját RF GPIO-capture-t, majd OTA-hibánál/újraengedélyezésnél ismét a szokásos hálózati + API stabilizációs kapun keresztül indul. A hosszú leállító lambda már nincs a YAML-ban.
 
 Frissítés előtt a **RFLink figyelés** kézzel is kikapcsolható. Ez már az OTA-kézfogás előtt szünetelteti a rádiós feldolgozást. A felesleges párhuzamos hálózati naplóolvasókat zárd be.
 
@@ -725,7 +714,7 @@ Ha egy korábban működő Alecto V1/Plugin 030 eszköz hirtelen csak szabályta
 ### Elvárt verzió- és állapotjelzések
 
 ```text
-RFLink RX compatibility bridge v0.1.5 (...)
+RFLink RX compatibility bridge v0.1.9 (optimized active dispatch; self-healing RX)
 RX plugins compiled: 48
 Remote Receiver rxgate2 (ESP8266 / based on 2026.9.0)
 High frequency configured: NO
@@ -735,10 +724,10 @@ High frequency configured: NO
 Megfelelő HA-kapcsolat után:
 
 ```text
-CAPTURE=ON; DECODE=ON; api_states=YES; wifi=CONNECTED; fast_loop=OFF
+AUTO=ON; CAPTURE=ON; DECODE=ON; api_states=YES; network=CONNECTED; fast_loop=OFF
 ```
 
-A fő diagnosztika `AUTO=ON` mezője a figyelési kapcsoló engedélyét tükrözi. Kikapcsoláskor a számlálók megállnak, nem kell nullázódniuk. A bináris aktív-dekódolás visszajelzés a másodperces ellenőrzésnél frissülhet.
+A fő diagnosztika `AUTO=ON` mezője a figyelési kapcsoló engedélyét tükrözi. Kikapcsoláskor a számlálók megállnak, nem kell nullázódniuk. A bináris aktív-dekódolás visszajelzés közvetlenül a komponens állapotváltásakor frissül.
 
 | Naplómező | Jelentés |
 |---|---|
@@ -750,10 +739,11 @@ A fő diagnosztika `AUTO=ON` mezője a figyelési kapcsoló engedélyét tükrö
 | `observed` | Keretszinten megfigyelt, elfogadott EV1527-keretek, elnyomott ismétlésekkel együtt |
 | `irq_total` | A saját RF GPIO-megszakításkezelő hívásszáma |
 | `rx_loop_calls` | A bekapcsolt vevő főciklusbeli feldolgozásainak száma |
-| `overflow_reports` | Észlelt túlcsordulásjelzések; nem pontos elveszettcsomag-számláló |
+| `overflow_reports` | Észlelt ring-buffer túlcsordulások; v0.1.9-ben automatikus capture-resync követi |
+| `recoveries` | Automatikus RX újraszinkronizálások száma (overflow vagy tartósan lezáratlan impulzussor) |
+| `history_resets` | Legacy ismétlésszűrő állapot ürítéseinek száma; hosszabb RF-csend és RX-resync is növelheti |
 | `decode_max_us` | Egy mért dekóderhívás legnagyobb ideje |
 | `callback_max_us` / `frame_callback_max_us` | Üzenet- / keret-visszahívások mért legnagyobb ideje |
-| `snapshot_max_us` | A diagnosztikai mezőfrissítés mért legnagyobb ideje |
 
 Az időmérések helyi feldolgozási időket mutatnak, **nem a teljes gombnyomás → Wi-Fi → HA → lámpa késleltetést**. Az `overflow_reports=0` nem jelenti, hogy minden rádiókeret hibátlanul megérkezett.
 
@@ -773,6 +763,7 @@ Az időmérések helyi feldolgozási időket mutatnak, **nem a teljes gombnyomá
 | Hőmérséklet eltűnik egy gombnyomás után | A közös pillanatképben ez szándékos; állandó méréshez saját NAME+ID szenzor kell. |
 | Tartás többször új press-szel indul | Valódi elengedések vagy túl hosszú megfelelőkeret-hiány. Előbb a rádiós naplót és a holdfix1 meglétét ellenőrizd. |
 | Figyelés ON, tanuló OFF | Normál üzem: a felvett távirányítók továbbra is működnek. |
+| Több perc csend után csak sokadik gombnyomásra ébred | v0.1.9 önjavítás: nézd a `recoveries`, `history_resets`, `frames`, `calls`, `observed` számlálókat. Overflow vagy beragadt részkeret automatikusan resyncel; az első hosszú csend utáni dekódolás előtt a legacy repeat history ürül. |
 | Átnevezés után régi, nem elérhető kapcsoló is látszik | Firmware-beli névcsere HA-regisztrációs következménye lehet; hivatkozások ellenőrzése, nem teljes integrációtörlés. |
 
 A nyers `dump` csak rövid, célzott hibakeresésre való. A korábbi próbákban a sok nyers naplózás mellett az MQTT használata is problémásnak tűnt. Normál üzemben ne küldj minden impulzussorból naplóüzenetet.
@@ -785,7 +776,7 @@ A legújabb tanulóképen a HA már megkapta az **EV1527 / 085372 / 08 / ON / si
 
 **Korábban jelentett host-tesztek:** a v0.1.6 `TEST_RESULTS.txt` szerint a 48 és 47 pluginos motorral 85–85, a szűkített EV1527-készlettel 83 futási ellenőrzés, továbbá 29 alapgesztus- és 34 holdfix-eset futott le. Ezek helyettesített ESPHome/JSON környezetű számítógépes tesztek voltak. Az ottani jelentés szerint nem történt teljes Xtensa-fordítás, rádiós hardverszimuláció vagy az opcionális GitHub-workflow futtatása.
 
-**A mostani dokumentációfrissítés ellenőrzése külön szerepel az `ELLENORZES.txt` fájlban.** Nem állítjuk, hogy a régi teljes tesztkészletet újra lefuttattuk pusztán a README és a névminta elkészítéséhez.
+**A v0.1.9 regressziós ellenőrzése a `tests/` készlettel történik.** A hosttesztek nem helyettesítik az ESP8266 célfordítást és a hosszú, valódi rádiós hardvertesztet; kiadás előtt az eszközön is ellenőrizni kell az idle utáni első gombnyomást, overflow/recovery számlálókat és a Wi-Fi/API stabilitását.
 
 Fontos határok:
 

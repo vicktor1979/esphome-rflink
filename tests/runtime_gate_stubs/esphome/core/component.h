@@ -3,7 +3,7 @@
 #include <vector>
 #include <utility>
 namespace esphome {
-class Component { public: virtual ~Component() = default; virtual void setup() {} virtual void dump_config() {} };
+class Component { public: virtual ~Component() = default; virtual void setup() {} virtual void loop() {} virtual void dump_config() {} };
 template<class Signature> class CallbackManager;
 template<class... Args> class CallbackManager<void(Args...)> {
  std::vector<std::function<void(Args...)>> callbacks_;

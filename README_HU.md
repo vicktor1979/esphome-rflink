@@ -36,7 +36,9 @@ Teljes ESP8266 példák:
 - A teljes dekódolt JSON szükség esetén a `RFLink részletes napló` kapcsolóval tehető láthatóvá a logban.
 - Plugin 254-hez van `RF debug 60 másodperc` gomb, hogy a nagy terhelésű debug ne maradjon véletlenül bekapcsolva.
 - `RF pluginok alaphelyzet` és `RF tanulás indítása` gomb könnyíti a napi használatot.
-- Receiver overflow esetén a pontos számláló megmarad, de a warning napló aggregált, így zajos RF környezetben nincs logvihar.
+- A korábbi YAML-os indítási/diagnosztikai `interval` blokk a komponensbe került: `auto_start: true` intézi a Wi-Fi + HA API kaput, az 5 s stabilizációt és a diagnosztikát.
+- Receiver overflow esetén a vevő automatikusan újraszinkronizálja a ring buffert; tartósan lezáratlan részkeretnél 2,5 s után szintén önjavít. A warning napló korlátozott.
+- Hosszabb RF-csend után a legacy ismétlésszűrő állapot automatikusan ürül, hogy az első új gombnyomást ne blokkolhassa beragadt history.
 
 ## Bevált ESP8266 RX alap
 
@@ -54,7 +56,7 @@ remote_receiver:
   buffer_size: 1200b
 ```
 
-A vétel csak Wi-Fi + Home Assistant API kapcsolat után, 5 másodperces stabilizálási idővel indul el a teljes példákban.
+A vétel csak Wi-Fi + Home Assistant API állapotfeliratkozás után, 5 másodperces stabilizálási idővel indul el a teljes példákban. Ezt már maga az `rflink` komponens végzi `auto_start: true` mellett; nincs hozzá külön YAML `interval`/global/on_raw logika.
 
 ## Pluginok
 
@@ -72,6 +74,10 @@ EV1527 · 085372 · 08 · ON · single
 ```
 
 A pontos machine-readable minta tanulás közben a logban továbbra is megjelenik, így YAML-ba másolható.
+
+## Több perc csend utáni első gombnyomás
+
+A v0.1.9 két önjavító védelmet tartalmaz: overflow vagy 2,5 s-nál tovább lezáratlan RF részkeret esetén automatikus receiver-resync történik, illetve 1 s-nál hosszabb felismert RF-csend után az első következő dekódolás előtt ürül a legacy repeat history. A `RFLink állapot` jelzi, ha RX-helyreállítás történt; a diagnosztikai logban `recoveries` és `history_resets` számláló is látható.
 
 ## Alecto V1
 
