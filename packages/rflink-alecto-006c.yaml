@@ -6,11 +6,10 @@
 # four-digit value). Therefore this package intentionally matches NAME="Alecto V1"
 # and does NOT require a fixed ID anymore.
 #
-# Existing entity names keep "006C" for Home Assistant compatibility, while the
-# new diagnostic text sensor shows the currently received RF ID.
+# Entity display names intentionally do not contain the rolling RF ID.
+# The diagnostic text sensor shows the currently received RF ID separately.
 # PARAM is the RFLink packet sequence and is intentionally ignored.
 # TEMP: hexadecimal sign-magnitude tenths used by RFLink.
-# HUM: decimal percentage.
 # BAT: LOW = low battery; OK = battery OK.
 # Missing fields do not clear previous values because an Alecto V1 station may
 # send different packet types separately.
@@ -22,7 +21,7 @@ json:
 sensor:
   - platform: template
     id: alecto_006c_temp
-    name: "Alecto 006C hőmérséklet"
+    name: "Alecto hőmérséklet"
     icon: mdi:thermometer
     internal: false
     entity_category: ""
@@ -32,22 +31,10 @@ sensor:
     accuracy_decimals: 1
     update_interval: never
 
-  - platform: template
-    id: alecto_006c_hum
-    name: "Alecto 006C páratartalom"
-    icon: mdi:water-percent
-    internal: false
-    entity_category: ""
-    unit_of_measurement: "%"
-    device_class: humidity
-    state_class: measurement
-    accuracy_decimals: 0
-    update_interval: never
-
 binary_sensor:
   - platform: template
     id: alecto_006c_bat
-    name: "Alecto 006C alacsony elem"
+    name: "Alecto alacsony elem"
     device_class: battery
     internal: false
     entity_category: ""
@@ -94,9 +81,6 @@ script:
 
             data::publish_number(
                 id(alecto_006c_temp), data::number(root, data::TEMP), false);
-            data::publish_number(
-                id(alecto_006c_hum), data::number(root, data::HUM), false);
-
             const std::string battery = root["BAT"] | "";
             data::publish_binary(
                 id(alecto_006c_bat), data::binary_value(battery, "LOW", "OK"),
