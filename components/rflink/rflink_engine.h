@@ -36,6 +36,7 @@ uint32_t get_alecto_reconstructed_count();
 uint8_t get_alecto_last_frames();
 uint8_t get_alecto_last_data_strong();
 uint8_t get_alecto_last_checksum_strong();
+uint8_t get_alecto_last_payload_weak();
 
 // EV1527 receive-path diagnostics. near counts raw 40..60-pulse frames seen
 // immediately before Plugin_061; exact50 is the protocol's required pulse

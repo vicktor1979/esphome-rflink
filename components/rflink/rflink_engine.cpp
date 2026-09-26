@@ -1,9 +1,9 @@
 // Compatibility implementation; original plugin and utility bytes are unmodified.
-// v0.2.0.3: keep the robust Alecto consensus, but make every normal legacy
-// decoder (especially Plugin_061 EV1527) run before the expensive Alecto
-// soft-recovery fallback. Add EV1527 path counters so field logs can distinguish
-// RF waveform damage from scheduler/decoder stalls. Original RFLink plugin
-// sources stay byte-for-byte unchanged.
+// v0.2.0.4: keep EV1527 on the fast normal decode path while making Alecto
+// recovery more tolerant of receiver glitches. Alecto-only pre-collapse now
+// removes sub-220 us edge spikes, and payload consensus may use an actually
+// observed 2:1-or-better majority while the rolling-code/ID bits still require
+// strong agreement. Original RFLink plugin sources stay byte-for-byte unchanged.
 #include "rflink_engine.h"
 #include <Arduino.h>
 #include <algorithm>
@@ -63,6 +63,7 @@ uint32_t alecto_reconstructed_count = 0;
 uint8_t alecto_last_frames = 0;
 uint8_t alecto_last_data_strong = 0;
 uint8_t alecto_last_checksum_strong = 0;
+uint8_t alecto_last_payload_weak = 0;
 uint32_t ev1527_near_frame_count = 0;
 uint32_t ev1527_exact50_frame_count = 0;
 uint32_t ev1527_accepted_frame_count = 0;
@@ -163,7 +164,7 @@ constexpr uint16_t ALECTO_ALIGN_INF = 0xFFFF;
 constexpr uint16_t ALECTO_SHORT_NOMINAL_US = 480;
 constexpr uint16_t ALECTO_ZERO_NOMINAL_US = 1950;
 constexpr uint16_t ALECTO_ONE_NOMINAL_US = 4400;
-constexpr uint16_t ALECTO_PRECOLLAPSE_GLITCH_US = 180;
+constexpr uint16_t ALECTO_PRECOLLAPSE_GLITCH_US = 220;
 constexpr uint16_t ALECTO_MAX_ALIGNMENT_COST = 2600;
 
 // v0.1.9.7 alignment operations. RF glitches normally arrive as an extra edge
@@ -380,10 +381,10 @@ bool extract_alecto_soft_bits(const std::vector<int32_t> &timings, uint8_t frame
   }
   (void) append_timeout;
 
-  if (!looks_like_alecto_waveform(work, static_cast<uint8_t>(signal_count), total_us)) return false;
-
-  // Only collapse extremely narrow spikes here. Wider ambiguous excursions are
-  // intentionally left for the bidirectional DP instead of being guessed away.
+  // Alecto-only deglitching happens before the waveform gate. The ESP8266
+  // receiver can legitimately be left at 100 us for EV1527 while narrow
+  // 100..220 us opposite-level excursions inside an Alecto interval are merged
+  // back into the physical interval they split.
   while (signal_count >= 3U) {
     size_t best = signal_count;
     uint32_t best_width = ALECTO_PRECOLLAPSE_GLITCH_US;
@@ -399,6 +400,7 @@ bool extract_alecto_soft_bits(const std::vector<int32_t> &timings, uint8_t frame
     signal_count -= 2U;
   }
   if (signal_count < 45U || signal_count > ALECTO_MAX_OBSERVED_PULSES) return false;
+  if (!looks_like_alecto_waveform(work, static_cast<uint8_t>(signal_count), total_us)) return false;
 
   clear_alecto_pred();
   for (uint8_t slot = 0; slot < 4U; ++slot) {
@@ -551,6 +553,9 @@ bool prepare_alecto_repeat_recovery(const std::vector<int32_t> &timings) {
 
   uint8_t majority[36]{};
   uint8_t strong_data = 0;
+  uint8_t strong_id = 0;
+  uint8_t weak_payload = 0;
+  uint8_t resolved_data = 0;
   uint8_t strong_checksum = 0;
   bool checksum_strong[4]{};
   for (uint8_t bit = 0; bit < 36; ++bit) {
@@ -559,9 +564,20 @@ bool prepare_alecto_repeat_recovery(const std::vector<int32_t> &timings) {
     const uint16_t total = static_cast<uint16_t>(z + o);
     const uint16_t margin = z > o ? static_cast<uint16_t>(z - o) : static_cast<uint16_t>(o - z);
     const bool strong = total >= 2U && margin >= 2U;
-    if (strong) majority[bit] = o > z ? 1U : 0U;
+    // A weak payload vote is still real RF evidence: at least three repeats
+    // observed the bit and one side has a strict majority (2:1, 3:2, ...).
+    // Never use this relaxation for the rolling-code/ID bits 0..7.
+    const bool weak_observed = !strong && bit >= 8U && bit < 32U && total >= 3U && margin >= 1U;
+    if (strong || weak_observed) majority[bit] = o > z ? 1U : 0U;
     if (bit < 32U) {
-      if (strong) ++strong_data;
+      if (strong) {
+        ++strong_data;
+        if (bit < 8U) ++strong_id;
+        ++resolved_data;
+      } else if (weak_observed) {
+        ++weak_payload;
+        ++resolved_data;
+      }
     } else if (strong) {
       checksum_strong[bit - 32U] = true;
       ++strong_checksum;
@@ -571,11 +587,13 @@ bool prepare_alecto_repeat_recovery(const std::vector<int32_t> &timings) {
   alecto_last_frames = alecto_repeat.frames;
   alecto_last_data_strong = strong_data;
   alecto_last_checksum_strong = strong_checksum;
+  alecto_last_payload_weak = weak_payload;
 
-  // Never invent sensor data. All 32 payload bits must be independently
-  // supported by the repeated RF rows. Only the redundant 4-bit checksum may
-  // be repaired, and at least two actually received checksum bits must agree.
-  if (strong_data != 32U || strong_checksum < 2U) return false;
+  // The sensor identity is never inferred: all 8 rolling-code/ID bits require
+  // strong agreement. Sensor payload bits may use a strict observed majority,
+  // but every bit still needs RF votes; no payload bit is solved from checksum.
+  // The untouched Plugin_030 remains the final checksum/range/repeat validator.
+  if (strong_id != 8U || resolved_data != 32U || strong_checksum < 2U) return false;
 
   uint8_t valid_candidate[36]{};
   uint8_t valid_solutions = 0;
@@ -717,6 +735,7 @@ void reset(bool enable_all_compiled) {
   alecto_last_frames = 0;
   alecto_last_data_strong = 0;
   alecto_last_checksum_strong = 0;
+  alecto_last_payload_weak = 0;
   ev1527_near_frame_count = 0;
   ev1527_exact50_frame_count = 0;
   ev1527_accepted_frame_count = 0;
@@ -731,6 +750,7 @@ uint32_t get_alecto_reconstructed_count() { return alecto_reconstructed_count; }
 uint8_t get_alecto_last_frames() { return alecto_last_frames; }
 uint8_t get_alecto_last_data_strong() { return alecto_last_data_strong; }
 uint8_t get_alecto_last_checksum_strong() { return alecto_last_checksum_strong; }
+uint8_t get_alecto_last_payload_weak() { return alecto_last_payload_weak; }
 uint32_t get_ev1527_near_frame_count() { return ev1527_near_frame_count; }
 uint32_t get_ev1527_exact50_frame_count() { return ev1527_exact50_frame_count; }
 uint32_t get_ev1527_accepted_frame_count() { return ev1527_accepted_frame_count; }
