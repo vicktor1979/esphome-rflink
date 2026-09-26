@@ -2,11 +2,20 @@
 
 Az RFLink ESPHome komponens fontosabb verziói és változásai.
 
+## v0.2.0.1
+
+- Egyszerűsített runtime plugin konfiguráció: `plugin_switches: [30, 61, 254]`; nincs kézi `plugin_id`, kapcsoló `id`, név vagy külön restore beállítás.
+- A felsorolt normál pluginok `RESTORE_DEFAULT_ON` módban indulnak és visszaállítják az utolsó állapotukat; Plugin 254 mindig OFF-ról indul.
+- Kikerült a plugin-alaphelyzet gomb. Az `RFLink aktív pluginok` text sensor megmaradt, és minden runtime ki-/bekapcsoláskor frissül. A 254 közvetlenül a saját kapcsolójával kapcsolható hibakereséshez.
+- Capability-aware diagnosztika: az eredeti, változatlan pluginforrások `display_*` használatából build közben készül mezőképesség-tábla. A konfigurált pluginok által nem támogatott diagnosztikai mezők már setup alatt internal státuszt kapnak, ezért nem kerülnek a Home Assistant entitáslistájába.
+- Plugin kikapcsolásakor a hozzá tartozó runtime diagnosztikai állapotok érvénytelenednek / `Kikapcsolva` állapotot kapnak. ESPHome 2026.9.0 alatt a már regisztrált natív API entitások futás közbeni biztonságos eltávolítása és újbóli felvétele nem támogatott, ezért a kapcsolgatás nem használ setup utáni `set_internal()` trükköt.
+- Az Alecto saját hőmérséklet/elem/RF-ID entitásai Plugin 030-hoz kötött diagnosztikai életciklust kapnak; páratartalom nincs létrehozva ennél a készülékcsomagnál.
+- Az eredeti `RFLink/Plugins` fájlok változatlanok.
+
 ## v0.1.9
 
 - A Wi-Fi + HA API indulási kapu, 5 s settle és alapból 30 s diagnosztika a komponensbe került (`auto_start: true`); a fő példákból eltűnt a nagy 1 s/10 s YAML `interval`, a hozzá tartozó globals és `on_raw` számláló.
 - RX önjavítás: ring-buffer overflow után azonnali capture-resync; folyamatos, 2,5 s-nál tovább le nem záródó részkeret után automatikus újraszinkronizálás.
-- `high_frequency: false` mellett a receiver korlátozott backlog-drain módot kapott: egy főciklusban legfeljebb 4 már lezárt keretet dolgoz fel, maximum 6 ms extra munkakerettel. Ez megszünteti a lassan felgyűlő ring-buffer torlódást anélkül, hogy visszakapcsolná a Wi-Fi-t korábban zavaró folyamatos fast loopot.
 - Hosszabb RF-csend után a legacy ismétlésszűrő history ürül; receiver-resync és plugin ki/be kapcsolás szintén tiszta repeat state-t indít. Ez a több perc csend után nehezen ébredő távirányító esetét célozza.
 - Új diagnosztika: `recoveries` és `history_resets`, valamint kompakt `RFLink állapot` önjavítás-számlálóval. A fő példák globális logger szintje INFO; csak az `rflink` tag enged DEBUG-ot, és a részletes RF üzeneteket külön HA kapcsoló engedi.
 - Gyorsabb runtime dekóder-dispatch: csak az aktív legacy pluginok kerülnek bejárásra.

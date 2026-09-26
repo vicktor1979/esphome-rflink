@@ -7,7 +7,7 @@
 packages:
   rflink_native:
     url: https://github.com/vicktor1979/esphome-rflink
-    ref: v0.1.9
+    ref: v0.2.0.1
     refresh: 5min
     files:
       - packages/rflink-ha-api.yaml

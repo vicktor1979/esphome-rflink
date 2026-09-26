@@ -41,6 +41,15 @@ bool set_plugin_enabled(uint16_t plugin_id, bool enabled);
 size_t enabled_plugin_count();
 std::string enabled_plugins_csv();
 
+// Capability map generated from the untouched plugin sources at build time.
+// Each bit corresponds to one RFLink display_* data field.
+uint64_t field_capability_mask(const char *field);
+uint64_t plugin_capability_mask(uint16_t plugin_id);
+uint64_t compiled_capability_mask();
+uint64_t enabled_capability_mask();
+bool plugin_supports_field(uint16_t plugin_id, const char *field);
+bool enabled_plugins_support_field(const char *field);
+
 // Diagnose a legacy Alecto V1 (Plugin 030) candidate without changing or bypassing
 // the original RFLink plugin. Returns true only when the normalized frame has the
 // Alecto V1 pulse count (74); summary then explains the first Plugin_030 reject

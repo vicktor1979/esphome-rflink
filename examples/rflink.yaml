@@ -1,5 +1,5 @@
 # RFLink ESPHome – stable basic configuration example.
-# Release: v0.1.9
+# Release: v0.2.0.1
 #
 # ESP8266 / NodeMCU v2 example using rxgate2.
 # Native Home Assistant API, RF learning and runtime plugin control.
@@ -20,13 +20,13 @@ esp8266:
 packages:
   rflink_api:
     url: https://github.com/vicktor1979/esphome-rflink
-    ref: v0.1.9
+    ref: v0.2.0.1
     refresh: 5min
     files:
       - packages/rflink-ha-data-only.yaml
 
 external_components:
-  - source: github://vicktor1979/esphome-rflink@v0.1.9
+  - source: github://vicktor1979/esphome-rflink@v0.2.0.1
     components: [rflink, remote_receiver, rflink_remote]
     refresh: 5min
 
@@ -86,24 +86,9 @@ rflink:
   # Plugin 001 is always enabled.
   # Plugin 254 is the unsupported-signal diagnostic fallback
   # and defaults to OFF.
-  plugin_switches:
-    restore: true
-    plugins:
-      - plugin_id: 30
-        id: rf_plugin_030
-      - plugin_id: 61
-        id: rf_plugin_061
-      - plugin_id: 254
-        id: rf_plugin_254
-
-    active_plugins:
-      name: "RFLink aktív pluginok"
-
-    unsupported_signal:
-      signal:
-        name: "RFLink ismeretlen jel"
-      pulse_count:
-        name: "RFLink ismeretlen jel impulzusszám"
+  # Runtime plugin switches. Listed plugins restore their last state;
+  # Plugin 254 is the only exception and always starts OFF.
+  plugin_switches: [30, 61, 254]
 
   # Fast production default. Turn on the HA switch below only while debugging.
   log_messages: false
@@ -145,25 +130,6 @@ button:
     name: "RFLink OTA helyreállítás"
     entity_category: config
 
-
-  - platform: template
-    name: "RF debug 60 másodperc"
-    icon: mdi:bug-outline
-    entity_category: config
-    on_press:
-      - switch.turn_on: rf_plugin_254
-      - delay: 60s
-      - switch.turn_off: rf_plugin_254
-
-  - platform: template
-    name: "RF pluginok alaphelyzet"
-    icon: mdi:restore
-    entity_category: config
-    on_press:
-      - switch.turn_on: rf_plugin_030
-      - switch.turn_on: rf_plugin_061
-      - switch.turn_off: rf_plugin_254
-
   - platform: template
     name: "RF tanulás indítása"
     icon: mdi:remote
@@ -172,7 +138,7 @@ button:
       - lambda: id(rf_remotes).set_learning_enabled(true);
 
 
-# v0.1.9: shared timing and learning. No hard-coded remote identities here.
+# v0.2.0.1: shared timing and learning. No hard-coded remote identities here.
 
 rflink_remote:
   id: rf_remotes

@@ -2,7 +2,7 @@
 # First upload packages/rflink-ha-api.yaml to your existing GitHub repository.
 # Replace YOUR_GITHUB_USER and the repository/branch if yours are different.
 packages:
-  rflink_api: github://YOUR_GITHUB_USER/esphome-rflink/packages/rflink-ha-api.yaml@v0.1.9
+  rflink_api: github://YOUR_GITHUB_USER/esphome-rflink/packages/rflink-ha-api.yaml@v0.2.0.1
 
 # Keep your existing api settings/key. Add this block only when missing.
 api:

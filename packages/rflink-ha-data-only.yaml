@@ -1,4 +1,4 @@
-# v0.1.9: data fields only; compact last-message display. Remote events are configured in the device YAML.
+# v0.2.0.1: capability-aware data diagnostics; compact last-message display. Remote events are configured in the device YAML.
 # Replace all-data with this package; NEVER include both at once.
 # RF events: immediate. Latest decoded packet diagnostic snapshot: at most once per second.
 # Missing fields are cleared. Do not use multi-device snapshots as permanent room sensors.
@@ -8,6 +8,51 @@
 substitutions:
   rflink_full_json_parts: 'false'
   rflink_api_snapshot_interval: 1s
+
+# Register plugin-dependent diagnostic entities while ESPHome is still in setup.
+# Unsupported fields are marked internal before the native API lists entities.
+# Runtime plugin OFF invalidates the corresponding state; ESPHome does not
+# support safe add/remove of native-API entities after setup.
+esphome:
+  on_boot:
+    - priority: 1000
+      then:
+        - lambda: |-
+            id(rf_bridge).register_diagnostic_sensor("SET_LEVEL", &id(rflink_api_set_level));
+            id(rf_bridge).register_diagnostic_sensor("TEMP", &id(rflink_api_temp));
+            id(rf_bridge).register_diagnostic_sensor("HUM", &id(rflink_api_hum));
+            id(rf_bridge).register_diagnostic_sensor("BARO", &id(rflink_api_baro));
+            id(rf_bridge).register_diagnostic_sensor("HSTATUS", &id(rflink_api_hstatus));
+            id(rf_bridge).register_diagnostic_sensor("BFORECAST", &id(rflink_api_bforecast));
+            id(rf_bridge).register_diagnostic_sensor("UV", &id(rflink_api_uv));
+            id(rf_bridge).register_diagnostic_sensor("LUX", &id(rflink_api_lux));
+            id(rf_bridge).register_diagnostic_sensor("RAIN", &id(rflink_api_rain));
+            id(rf_bridge).register_diagnostic_sensor("RAINRATE", &id(rflink_api_rainrate));
+            id(rf_bridge).register_diagnostic_sensor("WINSP", &id(rflink_api_winsp));
+            id(rf_bridge).register_diagnostic_sensor("AWINSP", &id(rflink_api_awinsp));
+            id(rf_bridge).register_diagnostic_sensor("WINGS", &id(rflink_api_wings));
+            id(rf_bridge).register_diagnostic_sensor("WINDIR", &id(rflink_api_windir));
+            id(rf_bridge).register_diagnostic_sensor("WINCHL", &id(rflink_api_winchl));
+            id(rf_bridge).register_diagnostic_sensor("WINTMP", &id(rflink_api_wintmp));
+            id(rf_bridge).register_diagnostic_sensor("CHIME", &id(rflink_api_chime));
+            id(rf_bridge).register_diagnostic_sensor("CO2", &id(rflink_api_co2));
+            id(rf_bridge).register_diagnostic_sensor("SOUND", &id(rflink_api_sound));
+            id(rf_bridge).register_diagnostic_sensor("KWATT", &id(rflink_api_kwatt));
+            id(rf_bridge).register_diagnostic_sensor("WATT", &id(rflink_api_watt));
+            id(rf_bridge).register_diagnostic_sensor("CURRENT", &id(rflink_api_current));
+            id(rf_bridge).register_diagnostic_sensor("DIST", &id(rflink_api_dist));
+            id(rf_bridge).register_diagnostic_sensor("METER", &id(rflink_api_meter));
+            id(rf_bridge).register_diagnostic_sensor("VOLT", &id(rflink_api_volt));
+            id(rf_bridge).register_diagnostic_text_sensor("SWITCH", &id(rflink_api_last_switch));
+            id(rf_bridge).register_diagnostic_text_sensor("CMD", &id(rflink_api_last_command));
+            id(rf_bridge).register_diagnostic_text_sensor("BAT", &id(rflink_api_battery_text));
+            id(rf_bridge).register_diagnostic_text_sensor("HSTATUS", &id(rflink_api_hstatus_text));
+            id(rf_bridge).register_diagnostic_text_sensor("BFORECAST", &id(rflink_api_forecast_text));
+            id(rf_bridge).register_diagnostic_text_sensor("RGBW", &id(rflink_api_rgbw_text));
+            id(rf_bridge).register_diagnostic_binary_sensor("BAT", &id(rflink_api_battery_low));
+            id(rf_bridge).register_diagnostic_binary_sensor("PIR", &id(rflink_api_pir));
+            id(rf_bridge).register_diagnostic_binary_sensor("SMOKEALERT", &id(rflink_api_smoke));
+
 json:
 globals:
 - id: rflink_api_packet_count

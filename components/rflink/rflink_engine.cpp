@@ -1,7 +1,7 @@
 // Compatibility implementation; original plugin and utility bytes are unmodified.
-// v0.1.9.8: keep the v0.1.9.7 Alecto recovery and add a namespace-local
-// no-op Serial compatibility sink so the untouched legacy plugins also compile
-// when ESPHome logger baud_rate is 0 and the Arduino global Serial object is omitted.
+// v0.2.0.1: keep the Alecto recovery/UART-off compatibility and add a
+// generated plugin capability map for plugin-aware diagnostics. Original
+// RFLink plugin sources stay byte-for-byte unchanged.
 #include "rflink_engine.h"
 #include <Arduino.h>
 #include <algorithm>
@@ -729,6 +729,50 @@ std::string enabled_plugins_csv() {
     result += item;
   }
   return result;
+}
+
+uint64_t field_capability_mask(const char *field) {
+  if (field == nullptr || *field == 0) return 0;
+  // Must stay in the same order as stage_sources.py::DIAGNOSTIC_FIELDS.
+  static const char *const fields[] = {
+      "SET_LEVEL", "TEMP", "HUM", "BARO", "HSTATUS", "BFORECAST", "UV", "LUX",
+      "RAIN", "RAINRATE", "WINSP", "AWINSP", "WINGS", "WINDIR", "WINCHL", "WINTMP",
+      "CHIME", "CO2", "SOUND", "KWATT", "WATT", "CURRENT", "DIST", "METER", "VOLT",
+      "BAT", "PIR", "SMOKEALERT", "RGBW", "SWITCH", "CMD", "CHAN", "WINDIR_DEG",
+  };
+  static_assert(sizeof(fields) / sizeof(fields[0]) <= 64, "RFLink diagnostic capability mask overflow");
+  for (size_t i = 0; i < sizeof(fields) / sizeof(fields[0]); ++i)
+    if (std::strcmp(field, fields[i]) == 0) return UINT64_C(1) << i;
+  return 0;
+}
+
+uint64_t plugin_capability_mask(uint16_t plugin_id) {
+  for (const auto &entry : RFLINK_PLUGIN_CAPABILITIES)
+    if (entry.id == plugin_id) return entry.mask;
+  return 0;
+}
+
+uint64_t compiled_capability_mask() {
+  uint64_t mask = 0;
+  for (const auto &entry : RFLINK_PLUGIN_CAPABILITIES) mask |= entry.mask;
+  return mask;
+}
+
+uint64_t enabled_capability_mask() {
+  uint64_t mask = 0;
+  for (const auto &entry : RFLINK_PLUGIN_CAPABILITIES)
+    if (mask_get(static_cast<uint16_t>(entry.id))) mask |= entry.mask;
+  return mask;
+}
+
+bool plugin_supports_field(uint16_t plugin_id, const char *field) {
+  const uint64_t bit = field_capability_mask(field);
+  return bit != 0 && (plugin_capability_mask(plugin_id) & bit) != 0;
+}
+
+bool enabled_plugins_support_field(const char *field) {
+  const uint64_t bit = field_capability_mask(field);
+  return bit != 0 && (enabled_capability_mask() & bit) != 0;
 }
 
 bool diagnose_alecto_v1_candidate(const std::vector<int32_t> &timings, std::string &summary) {

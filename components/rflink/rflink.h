@@ -6,6 +6,7 @@
 #include <functional>
 #include <string>
 #include <utility>
+#include <vector>
 #include "esphome/core/component.h"
 #include "esphome/core/automation.h"
 #include "esphome/components/remote_base/remote_base.h"
@@ -30,6 +31,7 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   bool on_receive(remote_base::RemoteReceiveData data) override;
   void set_log_messages(bool enabled) { this->log_messages_ = enabled; }
   void set_plugin_switch_mode(bool enabled) { this->plugin_switch_mode_ = enabled; }
+  void add_configured_plugin(uint16_t plugin_id);
   void set_decode_enabled(bool enabled);
   bool is_decode_enabled() const { return this->decode_enabled_; }
   uint32_t get_decode_calls() const { return this->decode_calls_; }
@@ -41,7 +43,7 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   uint32_t get_max_frame_callback_us() const { return this->max_frame_callback_us_; }
   uint32_t get_repeat_history_resets() const { return this->repeat_history_resets_; }
 
-  // Optional v0.1.9 built-in startup/diagnostics controller. It is compiled in
+  // Built-in startup/diagnostics controller. It is compiled in
   // only when auto_start is configured, preserving old external-component use.
   void set_receiver(remote_receiver::RemoteReceiverComponent *receiver) { this->receiver_ = receiver; }
   void set_auto_start_enabled(bool enabled) { this->auto_start_enabled_ = enabled; }
@@ -56,15 +58,23 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   void set_decode_active_sensor(binary_sensor::BinarySensor *sensor) { this->decode_active_sensor_ = sensor; }
   void set_health_text_sensor(text_sensor::TextSensor *sensor) { this->health_text_sensor_ = sensor; }
   void set_build_text_sensor(text_sensor::TextSensor *sensor) { this->build_text_sensor_ = sensor; }
+  void set_active_plugins_text_sensor(text_sensor::TextSensor *sensor) { this->active_plugins_text_sensor_ = sensor; }
+  void publish_active_plugins();
 
   bool set_plugin_enabled(uint16_t plugin_id, bool enabled);
   bool is_plugin_enabled(uint16_t plugin_id) const;
   bool is_plugin_compiled(uint16_t plugin_id) const;
   size_t get_enabled_plugin_count() const;
-  void set_active_plugins_text_sensor(text_sensor::TextSensor *sensor) { this->active_plugins_text_sensor_ = sensor; }
+  bool is_diagnostic_field_configured(const char *field) const;
+  bool is_diagnostic_field_enabled(const char *field) const;
+  void register_diagnostic_sensor(const char *field, sensor::Sensor *entity);
+  void register_diagnostic_text_sensor(const char *field, text_sensor::TextSensor *entity);
+  void register_diagnostic_binary_sensor(const char *field, binary_sensor::BinarySensor *entity);
+  void register_plugin_diagnostic_sensor(uint16_t plugin_id, sensor::Sensor *entity);
+  void register_plugin_diagnostic_text_sensor(uint16_t plugin_id, text_sensor::TextSensor *entity);
+  void register_plugin_diagnostic_binary_sensor(uint16_t plugin_id, binary_sensor::BinarySensor *entity);
   void set_unsupported_signal_text_sensor(text_sensor::TextSensor *sensor) { this->unsupported_signal_text_sensor_ = sensor; }
   void set_unsupported_pulse_count_sensor(sensor::Sensor *sensor) { this->unsupported_pulse_count_sensor_ = sensor; }
-  void publish_active_plugins();
 
   void add_on_frame_callback(std::function<void(uint16_t, uint32_t)> &&callback) {
     this->frame_callbacks_.add(std::move(callback));
@@ -81,6 +91,8 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
 
  protected:
   void reset_runtime_history_(const char *reason);
+  void refresh_diagnostic_availability_();
+  void register_diagnostic_(uint64_t capability, uint16_t plugin_id, uint8_t kind, void *entity);
 #ifdef USE_RFLINK_AUTO_START
   bool network_ready_() const;
   bool api_ready_() const;
@@ -108,6 +120,7 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   binary_sensor::BinarySensor *decode_active_sensor_{nullptr};
   text_sensor::TextSensor *health_text_sensor_{nullptr};
   text_sensor::TextSensor *build_text_sensor_{nullptr};
+  text_sensor::TextSensor *active_plugins_text_sensor_{nullptr};
   bool auto_start_enabled_{false};
   bool monitoring_enabled_{true};
   bool ota_active_{false};
@@ -123,7 +136,15 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   uint32_t last_receiver_recovery_count_{0};
   std::string last_health_;
 
-  text_sensor::TextSensor *active_plugins_text_sensor_{nullptr};
+  struct DiagnosticBinding {
+    uint64_t capability{0};
+    uint16_t plugin_id{0};
+    uint8_t kind{0};  // 0=sensor, 1=text_sensor, 2=binary_sensor
+    void *entity{nullptr};
+  };
+  uint64_t configured_capability_mask_{0};
+  std::vector<uint16_t> configured_plugin_ids_;
+  std::vector<DiagnosticBinding> diagnostic_bindings_;
   text_sensor::TextSensor *unsupported_signal_text_sensor_{nullptr};
   sensor::Sensor *unsupported_pulse_count_sensor_{nullptr};
   CallbackManager<void(uint16_t, uint32_t)> frame_callbacks_;

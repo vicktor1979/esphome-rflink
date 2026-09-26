@@ -2,12 +2,24 @@
 
 **RF-jelek vétele változatlan RFLink-pluginokkal, natív Home Assistant-entitások, YAML-ban megadott távirányítók, gesztusfelismerés és tanuló nézet.**
 
-Dokumentáció: **2026. szeptember 25.**  
-Jelenlegi stabil fejlesztési alap: **v0.1.9 · ESP8266 rxgate2 · runtime plugin gate · rflink_remote**.
+Dokumentáció: **2026. szeptember 26.**  
+Jelenlegi stabil fejlesztési alap: **v0.2.0.1 · ESP8266 rxgate2 · egyszerű runtime plugin gate · capability-aware diagnosztika · rflink_remote**.
 
 Ez a README a projekt jelenlegi, közösen kipróbált felépítését foglalja össze. **Nem új firmware-verzió és nem teljes forráscsomag:** a mellékelt konfigurációs példák a GitHub-repóban már meglévő komponenseket használják. A dokumentációfrissítés nem módosítja a rádiós dekódereket, a vételi időzítéseket vagy a gesztusfelismerő C++ kódot.
 
-A **v0.1.9** fő célja a gyorsabb és önjavító vételi út: csak az aktív dekódereket járja be, az extended előfeldolgozás csak akkor fut, ha kell, a single-click pedig nem vár fölöslegesen multi-click időablakra. A korábbi YAML-os 1 s/10 s régi indítási és diagnosztikai `interval` logika a komponensbe került (`auto_start: true`). `high_frequency: false` mellett a vevő egy főciklusban korlátozottan több már lezárt keretet is leürít, így a lassú backlog nem tölti fel a ring buffert; overflow vagy tartósan lezáratlan impulzussor után saját maga újraszinkronizál, a legacy ismétlésszűrő állapot pedig hosszabb RF-csend után automatikusan ürül. A Home Assistantban megjelenő tanuló/utolsó RF szövegek rövidek; a teljes JSON hibakereséshez továbbra is a naplóban elérhető. A fő példákban a részletes RF üzenetnapló alapból ki van kapcsolva a kisebb futásidejű terhelésért; szükség esetén a **RFLink részletes napló** kapcsolóval ideiglenesen bekapcsolható.
+A **v0.1.9** fő célja a gyorsabb és önjavító vételi út: csak az aktív dekódereket járja be, az extended előfeldolgozás csak akkor fut, ha kell, a single-click pedig nem vár fölöslegesen multi-click időablakra. A korábbi YAML-os 1 s/10 s régi indítási és diagnosztikai `interval` logika a komponensbe került (`auto_start: true`). A vevő overflow vagy tartósan lezáratlan impulzussor után saját maga újraszinkronizál, a legacy ismétlésszűrő állapot pedig hosszabb RF-csend után automatikusan ürül. A Home Assistantban megjelenő tanuló/utolsó RF szövegek rövidek; a teljes JSON hibakereséshez továbbra is a naplóban elérhető. A fő példákban a részletes RF üzenetnapló alapból ki van kapcsolva a kisebb futásidejű terhelésért; szükség esetén a **RFLink részletes napló** kapcsolóval ideiglenesen bekapcsolható.
+
+
+### v0.2.0.1 plugin- és diagnosztika-egyszerűsítés
+
+A runtime plugin konfiguráció kézi plugin-ID/ESPHome-ID blokk helyett egyszerű lista:
+
+```yaml
+rflink:
+  plugin_switches: [30, 61, 254]
+```
+
+A normál felsorolt pluginok `RESTORE_DEFAULT_ON` módban működnek; a 254 debug plugin mindig OFF-ról indul. Nincs külön plugin-alaphelyzet gomb. Az `RFLink aktív pluginok` text sensor megmarad, és minden runtime ki-/bekapcsoláskor azonnal frissül (pl. `001,030,061`). A build az eredeti pluginforrások `display_*` hívásaiból képességtáblát készít, és setup alatt elrejti azokat a diagnosztikai mezőket, amelyeket egyik konfigurált plugin sem tud előállítani. Futás közbeni OFF állapotnál az érintett entitás unavailable / `Kikapcsolva` lesz; a natív API entitáslistájának biztonságos runtime eltávolítását/újrafelvételét nem erőlteti.
 
 Az új, felhasználói felületen használt kapcsolónév: **RFLink figyelés**. A korábbi neve **RFLink dekódolás próba** volt. Meglévő HA-entitás átnevezéséhez először olvasd el a [névkezelési részt](#4-a-figyelési-kapcsoló-átnevezése).
 
@@ -64,12 +76,12 @@ A különböző naplósorok eltérő verziói szándékosak: nem minden javítá
 
 | Rész | Jelenlegi alap | Feladat |
 |---|---|---|
-| `components/rflink` | v0.1.9 | Aktív dekóder-dispatch, JSON-formázás, runtime plugin gate, EV1527-keretmegfigyelés |
+| `components/rflink` | v0.2.0.1 | Aktív dekóder-dispatch, egyszerű runtime plugin gate, capability-aware diagnosztika, EV1527-keretmegfigyelés |
 | `components/remote_receiver` | rxgate2 | ESP8266-specifikus vételkapcsolás; kikapcsolható gyorsított főciklus |
 | `rflink_gestures.h` | holdfix1 | Rövid nyomások, többkattintás, tartás és kimaradástűrés |
 | `components/rflink_remote` | v0.1.9 | YAML-os távirányító-entitások, gyors single-click és kompakt tanulás |
-| `packages/rflink-ha-data-only.yaml` | v0.1.9 | Adatmezők és kompakt legutóbbi RF-üzenet, beégetett távirányítólista nélkül |
-| Fő készülék-YAML | v0.1.9 | API utáni indulás, runtime plugin kapcsolók, tanulás, diagnosztikai segédgombok |
+| `packages/rflink-ha-data-only.yaml` | v0.2.0.1 | Plugin-képességhez igazított adatmezők és kompakt legutóbbi RF-üzenet |
+| Fő készülék-YAML | v0.2.0.1 | API utáni indulás, egyszerű pluginlista, tanulás és capability-aware diagnosztika |
 
 A feltöltött hardveres naplókban **ESPHome 2026.9.0**, **Home Assistant 2026.9.3** és `nodemcuv2` szerepelt. Ez az összeállítás dokumentált kiindulópontja, **nem általános kompatibilitási ígéret minden későbbi kiadáshoz**.
 
@@ -183,7 +195,7 @@ A `capture_enabled` és `high_frequency` **a saját rxgate2 komponens opciói**.
 
 A korábbi forrás ESP8266-os alapkapcsolásában a DATA bemenet D1/GPIO5 volt, és külön D5/GPIO14-es vevőengedélyezés is szerepelt. A most működő konfigurációba emiatt **nem kell utólag találomra tápvezérlő kapcsolót betenni**. Másik hardverre telepítésnél a tényleges tápot, adatvezetéket, engedélyezést és jelszinteket külön ellenőrizni kell.
 
-A bevált `high_frequency: false` mellett az éleket továbbra is a GPIO-megszakítás gyűjti; csak a vevő saját folyamatosan gyorsított főciklus-kérése nincs engedélyezve. A v0.1.9 backlog-drain egy főciklusban legfeljebb 4 már lezárt keretet dolgoz fel, maximum 6 ms extra munkakerettel, ezért a normál ~16 ms-os ütemnél kissé gyorsabb keretáram sem gyűlik fel lassan a ringben. Az `overflow_reports`, `extra_drained` és `max_drain_batch` továbbra is figyelendő.
+A bevált `high_frequency: false` mellett az éleket továbbra is a GPIO-megszakítás gyűjti; csak a vevő saját folyamatosan gyorsított főciklus-kérése nincs engedélyezve. A főciklus ritkább kiolvasása nagy forgalomnál túlcsordulást okozhat, ezért az `overflow_reports` és a tényleges vétel együtt figyelendő.
 
 Az `1200b` az örökölt konfigurációs jelölés: ebben az ESP8266-os megvalósításban 1200 darab 32 bites időzítési elem tárolására kér helyet, vagyis körülbelül **4800 bájt** fő ring buffert. Erre a hosszabb támogatott impulzussorok miatt van szükség.
 
@@ -201,13 +213,13 @@ A közös forrásbetöltés:
 packages:
   rflink_api:
     url: https://github.com/vicktor1979/esphome-rflink
-    ref: v0.1.9
+    ref: v0.2.0.1
     refresh: 5min
     files:
       - packages/rflink-ha-data-only.yaml
 
 external_components:
-  - source: github://vicktor1979/esphome-rflink@v0.1.9
+  - source: github://vicktor1979/esphome-rflink@v0.2.0.1
     components: [rflink, remote_receiver, rflink_remote]
     refresh: 5min
 ```
@@ -276,7 +288,10 @@ rflink:
   id: rf_bridge
   receiver_id: rf_receiver
   rx_plugins: all
+  plugin_switches: [30, 61, 254]
 ```
+
+A `plugin_switches` listában csak a plugin számát kell megadni. Plugin 001 kötelező előfeldolgozó és automatikusan aktív; ne sorold fel. A normál kapcsolók utolsó állapotukat visszaállítják, a 254 mindig OFF-ról indul.
 
 | Választás | Eredmény az eredeti feltöltött készletből |
 |---|---|
@@ -708,13 +723,13 @@ Sikeres feltöltés után az 1–2 perces megfigyelés gyakorlati első próba, 
 
 ### Alecto V1: látszó RF jel, de nincs stabil dekódolás
 
-Ha egy korábban működő Alecto V1/Plugin 030 eszköz hirtelen csak szabálytalan impulzussorokat ad, az elemet is ellenőrizd. A projekt hardveres tesztjében gyenge elemmel még volt rádiós aktivitás, de nem állt össze stabilan érvényes keretté; elemcsere után az Alecto 006C adatai ismét rendesen érkeztek. Emiatt ehhez az esethez nem került lazább Plugin 030/framing kerülőmegoldás a v0.1.9-be.
+Alecto V1/Plugin 030 esetén a v0.1.9.8 óta a bridge több sérült ismétlésből is képes checksum-valid 36 bites sort helyreállítani, miközben az eredeti `Plugin_030.c` változatlan marad. A hardveres tesztben az Alecto hőmérséklet és elemállapot ismét stabilan megjelent; az adott készülék nem küld páratartalmat. Az RF rolling ID külön diagnosztikai entitásban látható.
 
 
 ### Elvárt verzió- és állapotjelzések
 
 ```text
-RFLink RX compatibility bridge v0.1.9 (optimized active dispatch; self-healing RX)
+RFLink RX compatibility bridge v0.2.0.1 (simple plugin restore; active plugin list; capability-aware diagnostics)
 RX plugins compiled: 48
 Remote Receiver rxgate2 (ESP8266 / based on 2026.9.0)
 High frequency configured: NO
@@ -741,8 +756,6 @@ A fő diagnosztika `AUTO=ON` mezője a figyelési kapcsoló engedélyét tükrö
 | `rx_loop_calls` | A bekapcsolt vevő főciklusbeli feldolgozásainak száma |
 | `overflow_reports` | Észlelt ring-buffer túlcsordulások; v0.1.9-ben automatikus capture-resync követi |
 | `recoveries` | Automatikus RX újraszinkronizálások száma (overflow vagy tartósan lezáratlan impulzussor) |
-| `extra_drained` | Az elsőn felül ugyanabban a főciklusban feldolgozott backlog-keretek száma |
-| `max_drain_batch` | A legnagyobb egy főciklusban feldolgozott keretszám; v0.1.9-ben legfeljebb 4 |
 | `history_resets` | Legacy ismétlésszűrő állapot ürítéseinek száma; hosszabb RF-csend és RX-resync is növelheti |
 | `decode_max_us` | Egy mért dekóderhívás legnagyobb ideje |
 | `callback_max_us` / `frame_callback_max_us` | Üzenet- / keret-visszahívások mért legnagyobb ideje |

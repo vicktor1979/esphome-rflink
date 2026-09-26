@@ -1,4 +1,4 @@
-# RFLink ESPHome v0.1.9 – rövid magyar útmutató
+# RFLink ESPHome v0.2.0.1 – rövid magyar útmutató
 
 A részletes, aktuális dokumentáció a gyökérben lévő [`README.md`](README.md). Ez a fájl a napi használathoz szükséges rövid összefoglaló.
 
@@ -10,13 +10,13 @@ A `main` fejlesztési ág. Működő eszközön rögzített taget használj:
 packages:
   rflink_api:
     url: https://github.com/vicktor1979/esphome-rflink
-    ref: v0.1.9
+    ref: v0.2.0.1
     refresh: 5min
     files:
       - packages/rflink-ha-data-only.yaml
 
 external_components:
-  - source: github://vicktor1979/esphome-rflink@v0.1.9
+  - source: github://vicktor1979/esphome-rflink@v0.2.0.1
     components: [rflink, remote_receiver, rflink_remote]
     refresh: 5min
 ```
@@ -27,6 +27,14 @@ Teljes ESP8266 példák:
 - `examples/rflink-extended.yaml` – 55 pluginos extended profil;
 - `examples/fragments/` – távirányító, MQTT, időjárás és GitHub package részletek.
 
+## v0.2.0.1 fontos változásai
+
+- A pluginlista egyszerű: `plugin_switches: [30, 61, 254]`. Nincs külön `plugin_id:`, kapcsoló `id:` vagy plugin-restore blokk.
+- A normál felsorolt pluginok visszaállítják az előző kapcsolóállapotukat és első használatkor ON-ról indulnak; a 254 mindig OFF-ról indul.
+- Nincs több plugin-alaphelyzet gomb; az `RFLink aktív pluginok` text sensor megmarad, és minden plugin ki-/bekapcsolásakor frissül.
+- A diagnosztikai mezők build/setup során automatikusan a konfigurált pluginok képességeihez igazodnak. Amit egyik konfigurált plugin sem tud előállítani, az nem jelenik meg Home Assistantban.
+- Runtime plugin OFF esetén az érintett diagnosztikai állapotok unavailable / `Kikapcsolva` állapotúak. ESPHome 2026.9.0 alatt a már regisztrált natív API entitások futás közbeni valódi eltávolítása/visszavétele nem biztonságosan támogatott.
+
 ## v0.1.9 fontos változásai
 
 - Csak az aktív runtime legacy dekóderek kerülnek bejárásra.
@@ -34,8 +42,6 @@ Teljes ESP8266 példák:
 - Ha egy EV1527 binding nem használ double/triple/click_N eseményt, a `single` a release után azonnal megjelenik; nem várja ki a `multi_click_timeout` idejét.
 - A tanuló jel, tanuló gesztus és az utolsó RF üzenet rövid, Home Assistant-barát szövegként jelenik meg.
 - A teljes dekódolt JSON szükség esetén a `RFLink részletes napló` kapcsolóval tehető láthatóvá a logban.
-- Plugin 254-hez van `RF debug 60 másodperc` gomb, hogy a nagy terhelésű debug ne maradjon véletlenül bekapcsolva.
-- `RF pluginok alaphelyzet` és `RF tanulás indítása` gomb könnyíti a napi használatot.
 - A korábbi YAML-os indítási/diagnosztikai `interval` blokk a komponensbe került: `auto_start: true` intézi a Wi-Fi + HA API kaput, az 5 s stabilizációt és a diagnosztikát.
 - Receiver overflow esetén a vevő automatikusan újraszinkronizálja a ring buffert; tartósan lezáratlan részkeretnél 2,5 s után szintén önjavít. A warning napló korlátozott.
 - Hosszabb RF-csend után a legacy ismétlésszűrő állapot automatikusan ürül, hogy az első új gombnyomást ne blokkolhassa beragadt history.
@@ -60,7 +66,16 @@ A vétel csak Wi-Fi + Home Assistant API állapotfeliratkozás után, 5 másodpe
 
 ## Pluginok
 
-`plugin_switches` használatakor csak az ott felsorolt pluginok kapcsolhatók runtime. Plugin 001 mindig aktív. Plugin 254 debug fallback első induláskor OFF, normál használatban maradjon kikapcsolva.
+`plugin_switches` használatakor csak az ott felsorolt pluginok kapnak runtime kapcsolót. A formátum egyszerű lista, például:
+
+```yaml
+rflink:
+  plugin_switches: [30, 61, 254]
+```
+
+Plugin 001 mindig aktív és nem kell felsorolni. A normál pluginok az utolsó kapcsolóállapotot visszaállítják (`RESTORE_DEFAULT_ON`), a 254 viszont minden reboot/OTA után OFF-ról indul.
+
+A diagnosztikai mezők automatikusan a felsorolt pluginok képességeihez igazodnak. A statikusan nem támogatott mezők nem kerülnek ki HA felé; egy plugin futásidejű kikapcsolásakor a csak hozzá tartozó állapotok unavailable / `Kikapcsolva` állapotúak.
 
 A lehető legkisebb ténylegesen szükséges pluginlistát érdemes használni. Például Alecto V1 + EV1527 esetén a 030 és 061 elég; a 254-et csak hibakereséskor kapcsold be.
 
@@ -77,11 +92,11 @@ A pontos machine-readable minta tanulás közben a logban továbbra is megjeleni
 
 ## Több perc csend utáni első gombnyomás
 
-A v0.1.9 több védelmet tartalmaz: `high_frequency: false` mellett egy főciklus korlátozottan több már lezárt RF keretet is leürít (legfeljebb 4, legfeljebb 6 ms munkakeret), így a lassan felgyűlő backlog nem tölti meg a ring buffert. Overflow vagy 2,5 s-nál tovább lezáratlan RF részkeret esetén automatikus receiver-resync történik, illetve 1 s-nál hosszabb felismert RF-csend után az első következő dekódolás előtt ürül a legacy repeat history. A `RFLink állapot` jelzi, ha RX-helyreállítás történt; a diagnosztikai logban `recoveries`, `extra_drained`, `max_drain_batch` és `history_resets` számláló is látható.
+A v0.1.9 két önjavító védelmet tartalmaz: overflow vagy 2,5 s-nál tovább lezáratlan RF részkeret esetén automatikus receiver-resync történik, illetve 1 s-nál hosszabb felismert RF-csend után az első következő dekódolás előtt ürül a legacy repeat history. A `RFLink állapot` jelzi, ha RX-helyreállítás történt; a diagnosztikai logban `recoveries` és `history_resets` számláló is látható.
 
 ## Alecto V1
 
-Ha egy korábban működő Alecto V1/Plugin 030 szenzor rádiós aktivitást mutat, de nem dekódol stabilan, ellenőrizd az elemet. A projektben az Alecto 006C gyenge elemmel hibás/hiányos vételt adott; elemcsere után a dekódolás ismét stabil lett. Emiatt a v0.1.9 nem lazította fel a Plugin 030 érvényességi feltételeit.
+Az Alecto V1/Plugin 030 vételnél a bridge több sérült ismétlésből checksum-valid sort tud helyreállítani, miközben az eredeti `Plugin_030.c` változatlan. A tesztelt készülék hőmérsékletet és elemállapotot küld, páratartalmat nem; az RF rolling ID külön diagnosztikai entitásban látható.
 
 ## Visszalépés
 

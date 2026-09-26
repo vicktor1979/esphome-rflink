@@ -1,6 +1,7 @@
 // Runtime diagnostic/plugin gate; does not modify the original RFLink plugins.
 #include "rflink.h"
 #include "rflink_engine.h"
+#include <algorithm>
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
@@ -41,7 +42,7 @@ void RFLinkComponent::setup() {
     this->ready_timing_ = false;
     this->auto_running_ = false;
     if (this->build_text_sensor_ != nullptr) {
-      std::string build{"v0.1.9.8 · "};
+      std::string build{"v0.2.0.1 · "};
       build += ::rflink_legacy::plugin_profile();
       build += " · ";
       build += std::to_string(static_cast<unsigned>(::rflink_legacy::plugin_count()));
@@ -103,7 +104,7 @@ void RFLinkComponent::loop() {
 }
 
 void RFLinkComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.1.9.8 (adaptive RX; Alecto bidirectional burst recovery; UART-off compatible):");
+  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.2.0.1 (simple plugin restore; active plugin list; capability-aware diagnostics):");
   ESP_LOGCONFIG(TAG, "  Plugin profile: %s", rflink_legacy::plugin_profile());
   ESP_LOGCONFIG(TAG, "  RX plugins compiled: %u", static_cast<unsigned>(::rflink_legacy::plugin_count()));
   ESP_LOGCONFIG(TAG, "  RX plugins enabled: %u", static_cast<unsigned>(::rflink_legacy::enabled_plugin_count()));
@@ -265,6 +266,13 @@ void RFLinkComponent::update_diagnostics_(uint32_t now, bool network_ready, bool
 }
 #endif  // USE_RFLINK_AUTO_START
 
+void RFLinkComponent::add_configured_plugin(uint16_t plugin_id) {
+  if (std::find(this->configured_plugin_ids_.begin(), this->configured_plugin_ids_.end(), plugin_id) ==
+      this->configured_plugin_ids_.end())
+    this->configured_plugin_ids_.push_back(plugin_id);
+  this->configured_capability_mask_ |= ::rflink_legacy::plugin_capability_mask(plugin_id);
+}
+
 bool RFLinkComponent::is_plugin_compiled(uint16_t plugin_id) const {
   return ::rflink_legacy::is_plugin_compiled(plugin_id);
 }
@@ -277,6 +285,88 @@ size_t RFLinkComponent::get_enabled_plugin_count() const {
   return ::rflink_legacy::enabled_plugin_count();
 }
 
+bool RFLinkComponent::is_diagnostic_field_configured(const char *field) const {
+  const uint64_t bit = ::rflink_legacy::field_capability_mask(field);
+  if (bit == 0) return false;
+  return this->plugin_switch_mode_ ? (this->configured_capability_mask_ & bit) != 0
+                                   : (::rflink_legacy::compiled_capability_mask() & bit) != 0;
+}
+
+bool RFLinkComponent::is_diagnostic_field_enabled(const char *field) const {
+  return ::rflink_legacy::enabled_plugins_support_field(field);
+}
+
+void RFLinkComponent::register_diagnostic_(uint64_t capability, uint16_t plugin_id, uint8_t kind, void *entity) {
+  if (entity == nullptr) return;
+  bool configured = false;
+  if (plugin_id != 0) {
+    configured = !this->plugin_switch_mode_ ? this->is_plugin_compiled(plugin_id)
+                                            : std::find(this->configured_plugin_ids_.begin(),
+                                                        this->configured_plugin_ids_.end(), plugin_id) !=
+                                                  this->configured_plugin_ids_.end();
+  } else {
+    configured = capability != 0 &&
+                 (!this->plugin_switch_mode_ ? (::rflink_legacy::compiled_capability_mask() & capability) != 0
+                                             : (this->configured_capability_mask_ & capability) != 0);
+  }
+
+  // This registration is called from the package's priority-1000 on_boot hook,
+  // while ESPHome setup is still running. That is the supported window for
+  // set_internal() in ESPHome 2026.9.0. Runtime plugin toggles never call it.
+  if (kind == 0) static_cast<sensor::Sensor *>(entity)->set_internal(!configured);
+  else if (kind == 1) static_cast<text_sensor::TextSensor *>(entity)->set_internal(!configured);
+  else if (kind == 2) static_cast<binary_sensor::BinarySensor *>(entity)->set_internal(!configured);
+
+  if (!configured) return;
+  this->diagnostic_bindings_.push_back({capability, plugin_id, kind, entity});
+}
+
+void RFLinkComponent::register_diagnostic_sensor(const char *field, sensor::Sensor *entity) {
+  this->register_diagnostic_(::rflink_legacy::field_capability_mask(field), 0, 0, entity);
+}
+
+void RFLinkComponent::register_diagnostic_text_sensor(const char *field, text_sensor::TextSensor *entity) {
+  this->register_diagnostic_(::rflink_legacy::field_capability_mask(field), 0, 1, entity);
+}
+
+void RFLinkComponent::register_diagnostic_binary_sensor(const char *field, binary_sensor::BinarySensor *entity) {
+  this->register_diagnostic_(::rflink_legacy::field_capability_mask(field), 0, 2, entity);
+}
+
+void RFLinkComponent::register_plugin_diagnostic_sensor(uint16_t plugin_id, sensor::Sensor *entity) {
+  this->register_diagnostic_(0, plugin_id, 0, entity);
+}
+
+void RFLinkComponent::register_plugin_diagnostic_text_sensor(uint16_t plugin_id, text_sensor::TextSensor *entity) {
+  this->register_diagnostic_(0, plugin_id, 1, entity);
+}
+
+void RFLinkComponent::register_plugin_diagnostic_binary_sensor(uint16_t plugin_id, binary_sensor::BinarySensor *entity) {
+  this->register_diagnostic_(0, plugin_id, 2, entity);
+}
+
+void RFLinkComponent::refresh_diagnostic_availability_() {
+  const uint64_t enabled = ::rflink_legacy::enabled_capability_mask();
+  for (const auto &binding : this->diagnostic_bindings_) {
+    const bool active = binding.plugin_id != 0 ? this->is_plugin_enabled(binding.plugin_id)
+                                               : (enabled & binding.capability) != 0;
+    if (active || binding.entity == nullptr) continue;
+    if (binding.kind == 0) {
+      static_cast<sensor::Sensor *>(binding.entity)->invalidate_state();
+    } else if (binding.kind == 1) {
+      auto *text = static_cast<text_sensor::TextSensor *>(binding.entity);
+      if (!text->has_state() || text->state != "Kikapcsolva") text->publish_state("Kikapcsolva");
+    } else if (binding.kind == 2) {
+      static_cast<binary_sensor::BinarySensor *>(binding.entity)->invalidate_state();
+    }
+  }
+}
+
+void RFLinkComponent::publish_active_plugins() {
+  if (this->active_plugins_text_sensor_ == nullptr) return;
+  this->active_plugins_text_sensor_->publish_state(::rflink_legacy::enabled_plugins_csv());
+}
+
 bool RFLinkComponent::set_plugin_enabled(uint16_t plugin_id, bool enabled) {
   if (!::rflink_legacy::set_plugin_enabled(plugin_id, enabled)) {
     ESP_LOGW(TAG, "Plugin %03u is not compiled; runtime state unchanged", static_cast<unsigned>(plugin_id));
@@ -287,12 +377,18 @@ bool RFLinkComponent::set_plugin_enabled(uint16_t plugin_id, bool enabled) {
   this->repeat_history_dirty_ = false;
   ESP_LOGI(TAG, "Plugin %03u runtime %s", static_cast<unsigned>(plugin_id), enabled ? "ON" : "OFF");
   this->publish_active_plugins();
+  this->refresh_diagnostic_availability_();
+  if (plugin_id == 254) {
+    if (!enabled) {
+      if (this->unsupported_signal_text_sensor_ != nullptr)
+        this->unsupported_signal_text_sensor_->publish_state("Kikapcsolva");
+      if (this->unsupported_pulse_count_sensor_ != nullptr)
+        this->unsupported_pulse_count_sensor_->invalidate_state();
+    } else if (this->unsupported_signal_text_sensor_ != nullptr) {
+      this->unsupported_signal_text_sensor_->publish_state("Várakozás ismeretlen RF jelre...");
+    }
+  }
   return true;
-}
-
-void RFLinkComponent::publish_active_plugins() {
-  if (this->active_plugins_text_sensor_ == nullptr) return;
-  this->active_plugins_text_sensor_->publish_state(::rflink_legacy::enabled_plugins_csv());
 }
 
 void RFLinkPluginSwitch::setup() {
@@ -305,10 +401,7 @@ void RFLinkPluginSwitch::setup() {
   this->publish_state(enabled);
 }
 
-void RFLinkPluginSwitch::dump_config() {
-  LOG_SWITCH("  ", "RFLink plugin", this);
-  ESP_LOGCONFIG(TAG, "    Plugin ID: %03u", static_cast<unsigned>(this->plugin_id_));
-}
+void RFLinkPluginSwitch::dump_config() { LOG_SWITCH("  ", "RFLink plugin", this); }
 
 void RFLinkPluginSwitch::write_state(bool state) {
   if (this->parent_->set_plugin_enabled(this->plugin_id_, state)) this->publish_state(state);
