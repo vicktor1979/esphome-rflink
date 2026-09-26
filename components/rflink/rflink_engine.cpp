@@ -1,7 +1,9 @@
 // Compatibility implementation; original plugin and utility bytes are unmodified.
-// v0.2.0.1: keep the Alecto recovery/UART-off compatibility and add a
-// generated plugin capability map for plugin-aware diagnostics. Original
-// RFLink plugin sources stay byte-for-byte unchanged.
+// v0.2.0.2: keep the plugin-aware diagnostics/UART-off compatibility and
+// make Alecto repeat recovery tolerant of short bursts and a few unresolved
+// bits. A packet is reconstructed only when checksum/range validation leaves
+// exactly one valid 36-bit solution. Original RFLink plugin sources stay
+// byte-for-byte unchanged.
 #include "rflink_engine.h"
 #include <Arduino.h>
 #include <algorithm>
@@ -58,6 +60,9 @@ struct AlectoRepeatAccumulator {
 AlectoRepeatAccumulator alecto_repeat{};
 uint32_t alecto_soft_frame_count = 0;
 uint32_t alecto_reconstructed_count = 0;
+uint8_t alecto_last_frames = 0;
+uint8_t alecto_last_data_strong = 0;
+uint8_t alecto_last_checksum_strong = 0;
 
 void reset_alecto_repeat() { alecto_repeat = AlectoRepeatAccumulator{}; }
 
@@ -534,20 +539,60 @@ bool prepare_alecto_repeat_recovery(const std::vector<int32_t> &timings) {
     uint8_t &vote = frame_bits[bit] ? alecto_repeat.one_votes[bit] : alecto_repeat.zero_votes[bit];
     if (vote < 255) ++vote;
   }
-  if (alecto_repeat.frames < 5U) return false;
+  // Real ESP8266 captures often leave only 3-4 usable repeats from one
+  // Alecto burst. Waiting for five complete soft rows made recovery stall even
+  // while alecto_soft kept increasing. Three rows are enough to start a
+  // conservative consensus attempt.
+  if (alecto_repeat.frames < 3U) return false;
 
   uint8_t majority[36]{};
+  uint8_t strong_data = 0;
+  uint8_t strong_checksum = 0;
+  bool checksum_strong[4]{};
   for (uint8_t bit = 0; bit < 36; ++bit) {
-    const uint8_t z = alecto_repeat.zero_votes[bit];
-    const uint8_t o = alecto_repeat.one_votes[bit];
-    const uint8_t total = static_cast<uint8_t>(z + o);
-    const uint8_t margin = z > o ? static_cast<uint8_t>(z - o) : static_cast<uint8_t>(o - z);
-    // Two agreeing observations are enough when there is no disagreement.
-    // If one damaged repeat disagrees, a later repeat must restore a margin of 2.
-    if (total < 2U || margin < 2U) return false;
-    majority[bit] = o > z ? 1U : 0U;
+    const uint16_t z = alecto_repeat.zero_votes[bit];
+    const uint16_t o = alecto_repeat.one_votes[bit];
+    const uint16_t total = static_cast<uint16_t>(z + o);
+    const uint16_t margin = z > o ? static_cast<uint16_t>(z - o) : static_cast<uint16_t>(o - z);
+    const bool strong = total >= 2U && margin >= 2U;
+    if (strong) majority[bit] = o > z ? 1U : 0U;
+    if (bit < 32U) {
+      if (strong) ++strong_data;
+    } else if (strong) {
+      checksum_strong[bit - 32U] = true;
+      ++strong_checksum;
+    }
   }
-  if (!alecto_bits_valid(majority)) return false;
+
+  alecto_last_frames = alecto_repeat.frames;
+  alecto_last_data_strong = strong_data;
+  alecto_last_checksum_strong = strong_checksum;
+
+  // Never invent sensor data. All 32 payload bits must be independently
+  // supported by the repeated RF rows. Only the redundant 4-bit checksum may
+  // be repaired, and at least two actually received checksum bits must agree.
+  if (strong_data != 32U || strong_checksum < 2U) return false;
+
+  uint8_t valid_candidate[36]{};
+  uint8_t valid_solutions = 0;
+  for (uint8_t checksum = 0; checksum < 16U; ++checksum) {
+    uint8_t candidate[36]{};
+    std::memcpy(candidate, majority, sizeof(candidate));
+    for (uint8_t i = 0; i < 4U; ++i) candidate[32U + i] = static_cast<uint8_t>((checksum >> i) & 1U);
+
+    bool received_checksum_matches = true;
+    for (uint8_t i = 0; i < 4U; ++i) {
+      if (checksum_strong[i] && candidate[32U + i] != majority[32U + i]) {
+        received_checksum_matches = false;
+        break;
+      }
+    }
+    if (!received_checksum_matches || !alecto_bits_valid(candidate)) continue;
+    if (valid_solutions == 0U) std::memcpy(valid_candidate, candidate, sizeof(valid_candidate));
+    if (++valid_solutions > 1U) return false;
+  }
+  if (valid_solutions != 1U) return false;
+  std::memcpy(majority, valid_candidate, sizeof(majority));
 
   // Recreate an ideal 74-pulse row. The caller immediately hands this to the
   // untouched Plugin_030, whose checksum/range/repeat logic remains final.
@@ -665,6 +710,9 @@ void reset(bool enable_all_compiled) {
   reset_alecto_repeat();
   alecto_soft_frame_count = 0;
   alecto_reconstructed_count = 0;
+  alecto_last_frames = 0;
+  alecto_last_data_strong = 0;
+  alecto_last_checksum_strong = 0;
   sequence = 0; clear_message(); output.reserve(256);
   rebuild_active_plugin_cache();
 }
@@ -672,6 +720,9 @@ size_t plugin_count() { return RFLINK_TOTAL_PLUGINS; }
 const char *plugin_profile() { return RFLINK_PLUGIN_PROFILE; }
 uint32_t get_alecto_soft_frame_count() { return alecto_soft_frame_count; }
 uint32_t get_alecto_reconstructed_count() { return alecto_reconstructed_count; }
+uint8_t get_alecto_last_frames() { return alecto_last_frames; }
+uint8_t get_alecto_last_data_strong() { return alecto_last_data_strong; }
+uint8_t get_alecto_last_checksum_strong() { return alecto_last_checksum_strong; }
 
 void reset_repeat_history() {
   SignalCRC = 0;

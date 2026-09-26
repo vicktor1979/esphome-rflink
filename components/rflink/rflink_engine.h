@@ -33,6 +33,9 @@ const char *plugin_profile();
 // the untouched Plugin_030.
 uint32_t get_alecto_soft_frame_count();
 uint32_t get_alecto_reconstructed_count();
+uint8_t get_alecto_last_frames();
+uint8_t get_alecto_last_data_strong();
+uint8_t get_alecto_last_checksum_strong();
 
 // Runtime plugin gate. Only plugins compiled into the current firmware can be changed.
 bool is_plugin_compiled(uint16_t plugin_id);
