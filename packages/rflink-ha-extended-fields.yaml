@@ -1,6 +1,14 @@
 # Optional v0.1.7 diagnostic fields. Include alongside data-only, not instead of it.
 # These are values from the most recent decoded packet, not per-device measurements.
 # WINDIR_DEG is already in degrees; do NOT feed it to legacy WINDIR (0..15).
+esphome:
+  on_boot:
+    - priority: 1000
+      then:
+        - lambda: |-
+            id(rf_bridge).register_diagnostic_sensor("CHAN", id(rflink_extended_channel));
+            id(rf_bridge).register_diagnostic_sensor("WINDIR_DEG", id(rflink_extended_direction));
+
 json:
 sensor:
   - platform: template
