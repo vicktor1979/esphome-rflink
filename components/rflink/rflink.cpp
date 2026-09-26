@@ -43,7 +43,7 @@ void RFLinkComponent::setup() {
     this->ready_timing_ = false;
     this->auto_running_ = false;
     if (this->build_text_sensor_ != nullptr) {
-      std::string build{"v0.2.0.2 · "};
+      std::string build{"v0.2.0.3 · "};
       build += ::rflink_legacy::plugin_profile();
       build += " · ";
       build += std::to_string(static_cast<unsigned>(::rflink_legacy::plugin_count()));
@@ -105,7 +105,7 @@ void RFLinkComponent::loop() {
 }
 
 void RFLinkComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.2.0.2 (simple plugin restore; capability diagnostics; robust Alecto consensus):");
+  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.2.0.3 (EV-first decode; deferred Alecto recovery; capability diagnostics):");
   ESP_LOGCONFIG(TAG, "  Plugin profile: %s", rflink_legacy::plugin_profile());
   ESP_LOGCONFIG(TAG, "  RX plugins compiled: %u", static_cast<unsigned>(::rflink_legacy::plugin_count()));
   ESP_LOGCONFIG(TAG, "  RX plugins enabled: %u", static_cast<unsigned>(::rflink_legacy::enabled_plugin_count()));
@@ -227,7 +227,7 @@ void RFLinkComponent::update_diagnostics_(uint32_t now, bool network_ready, bool
   if (this->receiver_ == nullptr) return;
 #ifdef USE_ESP8266
   ESP_LOGI("rflink.diag",
-           "AUTO=%s; CAPTURE=%s; DECODE=%s; api_states=%s; network=%s; uptime=%lu s; heap=%u B; max_block=%u B; frag=%u%%; frames=%lu; decoded=%lu; calls=%lu; skipped=%lu; decode_max_us=%lu; callback_max_us=%lu; observed=%lu; frame_callback_max_us=%lu; irq_total=%lu; fast_loop=%s; rx_loop_calls=%lu; overflow_reports=%lu; recoveries=%lu; backlog_boosts=%lu; backlog_max=%lu; history_resets=%lu; alecto_soft=%lu; alecto_rebuilt=%lu; alecto_frames=%u; alecto_data=%u; alecto_cs=%u",
+           "AUTO=%s; CAPTURE=%s; DECODE=%s; api_states=%s; network=%s; uptime=%lu s; heap=%u B; max_block=%u B; frag=%u%%; frames=%lu; decoded=%lu; calls=%lu; skipped=%lu; decode_max_us=%lu; callback_max_us=%lu; observed=%lu; frame_callback_max_us=%lu; irq_total=%lu; fast_loop=%s; rx_loop_calls=%lu; overflow_reports=%lu; recoveries=%lu; backlog_boosts=%lu; backlog_max=%lu; history_resets=%lu; alecto_soft=%lu; alecto_rebuilt=%lu; alecto_frames=%u; alecto_data=%u; alecto_cs=%u; ev_near=%lu; ev_50=%lu; ev_ok=%lu; ev_last=%u",
            this->monitoring_enabled_ ? "ON" : "OFF",
            this->receiver_->is_capture_enabled() ? "ON" : "OFF", this->decode_enabled_ ? "ON" : "OFF",
            api_ready ? "YES" : "NO", network_ready ? "CONNECTED" : "DISCONNECTED",
@@ -249,10 +249,14 @@ void RFLinkComponent::update_diagnostics_(uint32_t now, bool network_ready, bool
            static_cast<unsigned long>(::rflink_legacy::get_alecto_reconstructed_count()),
            static_cast<unsigned>(::rflink_legacy::get_alecto_last_frames()),
            static_cast<unsigned>(::rflink_legacy::get_alecto_last_data_strong()),
-           static_cast<unsigned>(::rflink_legacy::get_alecto_last_checksum_strong()));
+           static_cast<unsigned>(::rflink_legacy::get_alecto_last_checksum_strong()),
+           static_cast<unsigned long>(::rflink_legacy::get_ev1527_near_frame_count()),
+           static_cast<unsigned long>(::rflink_legacy::get_ev1527_exact50_frame_count()),
+           static_cast<unsigned long>(::rflink_legacy::get_ev1527_accepted_frame_count()),
+           static_cast<unsigned>(::rflink_legacy::get_ev1527_last_near_pulse_count()));
 #else
   ESP_LOGI("rflink.diag",
-           "AUTO=%s; CAPTURE=%s; DECODE=%s; api_states=%s; network=%s; frames=%lu; decoded=%lu; calls=%lu; skipped=%lu; decode_max_us=%lu; overflow_reports=%lu; recoveries=%lu; backlog_boosts=%lu; backlog_max=%lu; history_resets=%lu; alecto_soft=%lu; alecto_rebuilt=%lu; alecto_frames=%u; alecto_data=%u; alecto_cs=%u",
+           "AUTO=%s; CAPTURE=%s; DECODE=%s; api_states=%s; network=%s; frames=%lu; decoded=%lu; calls=%lu; skipped=%lu; decode_max_us=%lu; overflow_reports=%lu; recoveries=%lu; backlog_boosts=%lu; backlog_max=%lu; history_resets=%lu; alecto_soft=%lu; alecto_rebuilt=%lu; alecto_frames=%u; alecto_data=%u; alecto_cs=%u; ev_near=%lu; ev_50=%lu; ev_ok=%lu; ev_last=%u",
            this->monitoring_enabled_ ? "ON" : "OFF",
            this->receiver_->is_capture_enabled() ? "ON" : "OFF", this->decode_enabled_ ? "ON" : "OFF",
            api_ready ? "YES" : "NO", network_ready ? "CONNECTED" : "DISCONNECTED",
@@ -268,7 +272,11 @@ void RFLinkComponent::update_diagnostics_(uint32_t now, bool network_ready, bool
            static_cast<unsigned long>(::rflink_legacy::get_alecto_reconstructed_count()),
            static_cast<unsigned>(::rflink_legacy::get_alecto_last_frames()),
            static_cast<unsigned>(::rflink_legacy::get_alecto_last_data_strong()),
-           static_cast<unsigned>(::rflink_legacy::get_alecto_last_checksum_strong()));
+           static_cast<unsigned>(::rflink_legacy::get_alecto_last_checksum_strong()),
+           static_cast<unsigned long>(::rflink_legacy::get_ev1527_near_frame_count()),
+           static_cast<unsigned long>(::rflink_legacy::get_ev1527_exact50_frame_count()),
+           static_cast<unsigned long>(::rflink_legacy::get_ev1527_accepted_frame_count()),
+           static_cast<unsigned>(::rflink_legacy::get_ev1527_last_near_pulse_count()));
 #endif
 }
 #endif  // USE_RFLINK_AUTO_START

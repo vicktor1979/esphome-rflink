@@ -37,6 +37,14 @@ uint8_t get_alecto_last_frames();
 uint8_t get_alecto_last_data_strong();
 uint8_t get_alecto_last_checksum_strong();
 
+// EV1527 receive-path diagnostics. near counts raw 40..60-pulse frames seen
+// immediately before Plugin_061; exact50 is the protocol's required pulse
+// count; accepted counts Plugin_061 successes including suppressed repeats.
+uint32_t get_ev1527_near_frame_count();
+uint32_t get_ev1527_exact50_frame_count();
+uint32_t get_ev1527_accepted_frame_count();
+uint8_t get_ev1527_last_near_pulse_count();
+
 // Runtime plugin gate. Only plugins compiled into the current firmware can be changed.
 bool is_plugin_compiled(uint16_t plugin_id);
 bool is_plugin_enabled(uint16_t plugin_id);

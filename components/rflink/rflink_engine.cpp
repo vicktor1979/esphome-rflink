@@ -1,9 +1,9 @@
 // Compatibility implementation; original plugin and utility bytes are unmodified.
-// v0.2.0.2: keep the plugin-aware diagnostics/UART-off compatibility and
-// make Alecto repeat recovery tolerant of short bursts and a few unresolved
-// bits. A packet is reconstructed only when checksum/range validation leaves
-// exactly one valid 36-bit solution. Original RFLink plugin sources stay
-// byte-for-byte unchanged.
+// v0.2.0.3: keep the robust Alecto consensus, but make every normal legacy
+// decoder (especially Plugin_061 EV1527) run before the expensive Alecto
+// soft-recovery fallback. Add EV1527 path counters so field logs can distinguish
+// RF waveform damage from scheduler/decoder stalls. Original RFLink plugin
+// sources stay byte-for-byte unchanged.
 #include "rflink_engine.h"
 #include <Arduino.h>
 #include <algorithm>
@@ -63,6 +63,10 @@ uint32_t alecto_reconstructed_count = 0;
 uint8_t alecto_last_frames = 0;
 uint8_t alecto_last_data_strong = 0;
 uint8_t alecto_last_checksum_strong = 0;
+uint32_t ev1527_near_frame_count = 0;
+uint32_t ev1527_exact50_frame_count = 0;
+uint32_t ev1527_accepted_frame_count = 0;
+uint8_t ev1527_last_near_pulse_count = 0;
 
 void reset_alecto_repeat() { alecto_repeat = AlectoRepeatAccumulator{}; }
 
@@ -713,6 +717,10 @@ void reset(bool enable_all_compiled) {
   alecto_last_frames = 0;
   alecto_last_data_strong = 0;
   alecto_last_checksum_strong = 0;
+  ev1527_near_frame_count = 0;
+  ev1527_exact50_frame_count = 0;
+  ev1527_accepted_frame_count = 0;
+  ev1527_last_near_pulse_count = 0;
   sequence = 0; clear_message(); output.reserve(256);
   rebuild_active_plugin_cache();
 }
@@ -723,6 +731,10 @@ uint32_t get_alecto_reconstructed_count() { return alecto_reconstructed_count; }
 uint8_t get_alecto_last_frames() { return alecto_last_frames; }
 uint8_t get_alecto_last_data_strong() { return alecto_last_data_strong; }
 uint8_t get_alecto_last_checksum_strong() { return alecto_last_checksum_strong; }
+uint32_t get_ev1527_near_frame_count() { return ev1527_near_frame_count; }
+uint32_t get_ev1527_exact50_frame_count() { return ev1527_exact50_frame_count; }
+uint32_t get_ev1527_accepted_frame_count() { return ev1527_accepted_frame_count; }
+uint8_t get_ev1527_last_near_pulse_count() { return ev1527_last_near_pulse_count; }
 
 void reset_repeat_history() {
   SignalCRC = 0;
@@ -1041,48 +1053,92 @@ bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObserva
   if (append_timeout) RawSignal.Pulses[dest++] = SIGNAL_END_TIMEOUT_US / RAWSIGNAL_SAMPLE_RATE;
   RawSignal.Number = static_cast<int>(dest - 1);
   // index 0 is a plugin marker, and Number+1 remains the original zero sentinel.
+  //
+  // IMPORTANT ORDERING: all ordinary legacy decoders run before any expensive
+  // protocol-specific recovery. In v0.2.0.2 the Alecto soft-recovery ran
+  // immediately after Plugin_030 failed, which meant Plugin_061 EV1527 could be
+  // delayed by Alecto alignment work on a damaged/noisy frame. Keep Plugin_030's
+  // normal (cheap) decoder in registry order, defer only its soft recovery, and
+  // keep Plugin_254 as the final unsupported fallback.
+  size_t alecto_index = LEGACY_PLUGIN_COUNT;
+  size_t debug254_index = LEGACY_PLUGIN_COUNT;
+
   for (size_t active = 0; active < active_legacy_count; ++active) {
     const size_t index = active_legacy_indices[active];
-    if (short_debug_only && RX_PLUGINS[index].id != 254) continue;
+    const uint16_t plugin_id = static_cast<uint16_t>(RX_PLUGINS[index].id);
+
+    if (plugin_id == 254U) {
+      debug254_index = index;
+      continue;  // always last; it intentionally accepts unsupported packets
+    }
+    if (short_debug_only) continue;
+    if (plugin_id == 30U) alecto_index = index;
+
+    // Field diagnostics for the EV1527 receive path. A clean Plugin_061 packet
+    // is exactly 50 pulses; 40..60 is intentionally only a broad observation
+    // band so a future log can reveal edge-loss/glitch damage without enabling
+    // the very noisy Plugin_254 debug stream.
+    if (plugin_id == 61U) {
+      if (RawSignal.Number >= 40 && RawSignal.Number <= 60) {
+        ++ev1527_near_frame_count;
+        ev1527_last_near_pulse_count = static_cast<uint8_t>(RawSignal.Number);
+      }
+      if (RawSignal.Number == 50) ++ev1527_exact50_frame_count;
+    }
+
     // Keep SignalHash tied to the original registry index, not the compact
     // active-list index, preserving legacy repeat/hash behaviour.
     SignalHash = static_cast<byte>(index);
-    // Plugin 254 clears RawSignal.Number before returning. Preserve the count
-    // so a bounded copy can be published to HA after the fallback accepts it.
-    const int raw_count_before = RX_PLUGINS[index].id == 254 ? RawSignal.Number : 0;
     if (RX_PLUGINS[index].decode(0, nullptr)) {
       // Plugin_061 validates the bits BEFORE its duplicate check. Both its new
       // frame path and its duplicate path return with SignalCRC == bitstream.
       // Do not reset CRC/timers, re-run the plugin, or bypass its legacy filter.
-      // This mapping is deliberately limited to the uploaded EV1527 plugin.
-      if (observation != nullptr && RX_PLUGINS[index].id == 61) {
-        observation->valid = true;
-        observation->plugin_id = 61;
-        observation->code = static_cast<uint32_t>(SignalCRC) & 0x00FFFFFFUL;
-      }
-      if (RX_PLUGINS[index].id == 254) {
-        build_unsupported_summary(raw_count_before, unsupported);
+      if (plugin_id == 61U) {
+        ++ev1527_accepted_frame_count;
+        if (observation != nullptr) {
+          observation->valid = true;
+          observation->plugin_id = 61;
+          observation->code = static_cast<uint32_t>(SignalCRC) & 0x00FFFFFFUL;
+        }
       }
       SignalHashPrevious = SignalHash;
       RepeatingTimer = millis() + SIGNAL_REPEAT_TIME_MS;
       if (finished && !overflow) json = output;
       return true;  // includes duplicates deliberately suppressed by the plugin
     }
-    if (RX_PLUGINS[index].id == 30) {
-      const RawSignalStruct original = RawSignal;
-      if (prepare_alecto_repeat_recovery(timings)) {
-        clear_message();
-        SignalHash = static_cast<byte>(index);
-        if (RX_PLUGINS[index].decode(0, nullptr)) {
-          reset_alecto_repeat();
-          SignalHashPrevious = SignalHash;
-          RepeatingTimer = millis() + SIGNAL_REPEAT_TIME_MS;
-          if (finished && !overflow) json = output;
-          return true;
-        }
-        RawSignal = original;
-        clear_message();
+  }
+
+  // Recovery is a fallback, never a prerequisite for another protocol. Only
+  // after every normal decoder (including EV1527) has rejected the frame do we
+  // spend CPU on the soft Alecto alignment/consensus path.
+  if (!short_debug_only && alecto_index != LEGACY_PLUGIN_COUNT) {
+    const RawSignalStruct original = RawSignal;
+    if (prepare_alecto_repeat_recovery(timings)) {
+      clear_message();
+      SignalHash = static_cast<byte>(alecto_index);
+      if (RX_PLUGINS[alecto_index].decode(0, nullptr)) {
+        reset_alecto_repeat();
+        SignalHashPrevious = SignalHash;
+        RepeatingTimer = millis() + SIGNAL_REPEAT_TIME_MS;
+        if (finished && !overflow) json = output;
+        return true;
       }
+      RawSignal = original;
+      clear_message();
+    }
+  }
+
+  // Unsupported packet debug is deliberately last so it never masks a normal
+  // protocol or the Alecto recovery path. It remains fully opt-in at runtime.
+  if (debug254_index != LEGACY_PLUGIN_COUNT) {
+    SignalHash = static_cast<byte>(debug254_index);
+    const int raw_count_before = RawSignal.Number;
+    if (RX_PLUGINS[debug254_index].decode(0, nullptr)) {
+      build_unsupported_summary(raw_count_before, unsupported);
+      SignalHashPrevious = SignalHash;
+      RepeatingTimer = millis() + SIGNAL_REPEAT_TIME_MS;
+      if (finished && !overflow) json = output;
+      return true;
     }
   }
   return false;
