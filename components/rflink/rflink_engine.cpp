@@ -610,6 +610,10 @@ RFLINK_DEC_DISPLAY(METER) RFLINK_DEC_DISPLAY(VOLT)
 #include "rflink_vendor/7_Utils.cpp.inc"
 #include "rflink_vendor/registry.inc"
 
+#ifndef RFLINK_HAS_PLUGIN_CAPABILITIES
+#error "RFLink capability registry missing: update components/rflink/stage_sources.py and perform a clean ESPHome build"
+#endif
+
 namespace {
 constexpr size_t LEGACY_PLUGIN_COUNT = sizeof(RX_PLUGINS) / sizeof(RX_PLUGINS[0]);
 static uint8_t active_legacy_indices[LEGACY_PLUGIN_COUNT]{};

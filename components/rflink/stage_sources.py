@@ -10,6 +10,33 @@ import re
 
 PLUGIN_NAME = re.compile(r"Plugin_(\d{3})\.c$")
 
+# Diagnostic fields emitted by the legacy display_* formatter.  The order is
+# part of the generated C++ capability-mask ABI; keep it in sync with
+# rflink_engine.cpp::field_capability_mask().
+DIAGNOSTIC_FIELDS = (
+    "SET_LEVEL", "TEMP", "HUM", "BARO", "HSTATUS", "BFORECAST", "UV", "LUX",
+    "RAIN", "RAINRATE", "WINSP", "AWINSP", "WINGS", "WINDIR", "WINCHL", "WINTMP",
+    "CHIME", "CO2", "SOUND", "KWATT", "WATT", "CURRENT", "DIST", "METER", "VOLT",
+    "BAT", "PIR", "SMOKEALERT", "RGBW", "SWITCH", "CMD", "CHAN", "WINDIR_DEG",
+)
+_DIAGNOSTIC_FIELD_BITS = {name: 1 << idx for idx, name in enumerate(DIAGNOSTIC_FIELDS)}
+
+
+def _source_capability_mask(path: Path) -> int:
+    """Best-effort capability scan without changing any RFLink source file."""
+    text = _without_comments(path.read_text(errors="ignore"))
+    fields = set(re.findall(r"\bdisplay_([A-Z][A-Z0-9_]*)\s*\(", text))
+    # Extended decoders use tiny helpers for the two v0.1.7 fields.
+    if re.search(r"\bchannel\s*\(", text):
+        fields.add("CHAN")
+    if re.search(r"\bwind_degrees\s*\(", text):
+        fields.add("WINDIR_DEG")
+    mask = 0
+    for field in fields:
+        mask |= _DIAGNOSTIC_FIELD_BITS.get(field, 0)
+    return mask
+
+
 
 def _without_comments(text: str) -> str:
     return re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.S)
@@ -80,6 +107,15 @@ def stage(repo: Path, destination: Path, selection="configured", profile="legacy
     extra = extension_manifest(repo) if profile == "extended" else {"new_plugins": {}, "overrides": {}}
     extra_ids = {int(n) for n in extra["new_plugins"]}
     legacy_ids = [n for n in ids if n not in extra_ids]
+
+    capability_masks = {}
+    for n in ids:
+        source = available.get(n)
+        if n in extra_ids:
+            source = repo / "RFLink/Extensions" / extra["new_plugins"][str(n)]["path"]
+        elif profile == "extended" and str(n) in extra["overrides"]:
+            source = repo / "RFLink/Extensions" / extra["overrides"][str(n)]["path"]
+        capability_masks[n] = _source_capability_mask(source) if source is not None else 0
     if profile == "extended":
         for n, entry in extra["overrides"].items():
             base = available.get(int(n))
@@ -112,6 +148,11 @@ def stage(repo: Path, destination: Path, selection="configured", profile="legacy
                  f'#define RFLINK_PLUGIN_PROFILE "{profile}"']
     registry += ["static const unsigned RFLINK_COMPILED_PLUGIN_IDS[] = {"]
     registry += [f"  {n}," for n in ids]
+    registry += ["};", ""]
+    registry += ["#define RFLINK_HAS_PLUGIN_CAPABILITIES 1",
+                 "struct PluginCapabilityEntry { unsigned id; uint64_t mask; };",
+                 "static const PluginCapabilityEntry RFLINK_PLUGIN_CAPABILITIES[] = {"]
+    registry += [f"  {{{n}, UINT64_C(0x{capability_masks[n]:016X})}}," for n in ids]
     registry += ["};", ""]
     registry += [f"#define PLUGIN_{n:03d}" for n in legacy_ids]
     for n in legacy_ids:
@@ -160,6 +201,8 @@ def stage(repo: Path, destination: Path, selection="configured", profile="legacy
         "rx_plugins": ids, "tx_enabled": False, "plugin_profile": profile,
         "legacy_rx_plugins": legacy_ids, "new_rx_plugins": sorted(set(ids) & extra_ids),
         "active_overrides": [int(n) for n in extra["overrides"] if int(n) in ids],
+        "plugin_capabilities": {f"{n:03d}": [name for idx, name in enumerate(DIAGNOSTIC_FIELDS)
+                                                   if capability_masks[n] & (1 << idx)] for n in ids},
         "extension_sha256": {str(p.relative_to(repo)): hashlib.sha256(p.read_bytes()).hexdigest()
                              for p in sorted((repo/"RFLink/Extensions").rglob("*")) if p.is_file()} if profile == "extended" else {},
         "source_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest()

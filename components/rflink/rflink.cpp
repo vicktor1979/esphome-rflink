@@ -22,6 +22,7 @@ namespace esphome {
 namespace rflink {
 static const char *const TAG = "rflink";
 
+
 void RFLinkComponent::setup() {
   // With plugin_switches configured, only the mandatory preprocessor (001)
   // starts enabled. Individual switch components then restore/choose the
@@ -352,7 +353,7 @@ void RFLinkComponent::refresh_diagnostic_availability_() {
                                                : (enabled & binding.capability) != 0;
     if (active || binding.entity == nullptr) continue;
     if (binding.kind == 0) {
-      static_cast<sensor::Sensor *>(binding.entity)->invalidate_state();
+      static_cast<sensor::Sensor *>(binding.entity)->publish_state(NAN);
     } else if (binding.kind == 1) {
       auto *text = static_cast<text_sensor::TextSensor *>(binding.entity);
       if (!text->has_state() || text->state != "Kikapcsolva") text->publish_state("Kikapcsolva");
@@ -383,7 +384,7 @@ bool RFLinkComponent::set_plugin_enabled(uint16_t plugin_id, bool enabled) {
       if (this->unsupported_signal_text_sensor_ != nullptr)
         this->unsupported_signal_text_sensor_->publish_state("Kikapcsolva");
       if (this->unsupported_pulse_count_sensor_ != nullptr)
-        this->unsupported_pulse_count_sensor_->invalidate_state();
+        this->unsupported_pulse_count_sensor_->publish_state(NAN);
     } else if (this->unsupported_signal_text_sensor_ != nullptr) {
       this->unsupported_signal_text_sensor_->publish_state("Várakozás ismeretlen RF jelre...");
     }
