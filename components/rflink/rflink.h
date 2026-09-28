@@ -91,6 +91,7 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
 
  protected:
   void reset_runtime_history_(const char *reason);
+  bool filter_alecto_message_(uint32_t now_ms);
   void refresh_diagnostic_availability_();
   void register_diagnostic_(uint64_t capability, uint16_t plugin_id, uint8_t kind, void *entity);
 #ifdef USE_RFLINK_AUTO_START
@@ -115,6 +116,50 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   uint32_t last_recognized_ms_{0};
   uint32_t repeat_history_resets_{0};
   bool repeat_history_dirty_{false};
+
+  // Alecto V1 reliability gate. Plugin_030's 8-bit rolling code contains the
+  // 3-position channel selector in two dedicated bits. The remaining bits form
+  // a stable transmitter base ID, so one physical transmitter can change
+  // channel without becoming a new learned device. Up to three transmitters
+  // are tracked independently; new base IDs and temperature updates require
+  // repeated, time-separated agreement before they reach Home Assistant.
+  static constexpr uint8_t ALECTO_SLOT_COUNT = 3;
+  static constexpr uint8_t ALECTO_CANDIDATE_COUNT = 6;
+  static constexpr uint8_t ALECTO_SAMPLE_COUNT = 5;
+  struct AlectoSamples {
+    int16_t temp[ALECTO_SAMPLE_COUNT]{};
+    uint8_t battery[ALECTO_SAMPLE_COUNT]{};  // 0=missing, 1=OK, 2=LOW
+    uint8_t count{0};
+    uint8_t next{0};
+    uint32_t last_sample_ms{0};
+  };
+  struct AlectoSlot {
+    bool used{false};
+    uint16_t base_id{0};
+    uint16_t full_id{0};
+    uint8_t channel{0};
+    uint8_t pending_channel{0};
+    uint8_t pending_channel_hits{0};
+    uint32_t pending_channel_last_ms{0};
+    uint32_t last_seen_ms{0};
+    uint32_t last_publish_ms{0};
+    bool has_published_temp{false};
+    int16_t published_temp{0};
+    AlectoSamples samples{};
+  };
+  struct AlectoCandidate {
+    bool used{false};
+    uint16_t base_id{0};
+    uint8_t channel_votes[4]{};
+    uint32_t first_ms{0};
+    uint32_t last_seen_ms{0};
+    AlectoSamples samples{};
+  };
+  AlectoSlot alecto_slots_[ALECTO_SLOT_COUNT]{};
+  AlectoCandidate alecto_candidates_[ALECTO_CANDIDATE_COUNT]{};
+  uint32_t alecto_gate_published_{0};
+  uint32_t alecto_gate_dropped_{0};
+  uint32_t alecto_gate_learned_{0};
 
   remote_receiver::RemoteReceiverComponent *receiver_{nullptr};
   binary_sensor::BinarySensor *decode_active_sensor_{nullptr};
