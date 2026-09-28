@@ -40,7 +40,7 @@ json:
 sensor:
   - platform: template
     id: alecto_006c_temp
-    name: "Alecto hőmérséklet"
+    name: "Alecto 1 hőmérséklet"
     icon: mdi:thermometer
     internal: false
     entity_category: ""
@@ -77,7 +77,7 @@ sensor:
 binary_sensor:
   - platform: template
     id: alecto_006c_bat
-    name: "Alecto elem"
+    name: "Alecto 1 elem"
     device_class: battery
     internal: false
     entity_category: ""
