@@ -99,7 +99,7 @@ binary_sensor:
 text_sensor:
   - platform: template
     id: alecto_006c_current_id
-    name: "Alecto V1 aktuális RF ID"
+    name: "Alecto 1 RF ID"
     icon: mdi:identifier
     internal: false
     entity_category: diagnostic
@@ -107,7 +107,7 @@ text_sensor:
 
   - platform: template
     id: alecto_1_channel
-    name: "Alecto csatorna"
+    name: "Alecto 1 csatorna"
     icon: mdi:numeric
     internal: false
     entity_category: diagnostic
