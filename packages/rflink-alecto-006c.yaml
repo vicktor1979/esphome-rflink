@@ -34,7 +34,7 @@ sensor:
 binary_sensor:
   - platform: template
     id: alecto_006c_bat
-    name: "Alecto alacsony elem"
+    name: "Alecto elem"
     device_class: battery
     internal: false
     entity_category: ""
