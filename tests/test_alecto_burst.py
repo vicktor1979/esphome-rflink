@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Offline host regressions. Optional first argument: timestamped signed raw rows."""
+"""v0.2.0.8 original Alecto path regressions (historical filename retained).
+Optional first argument: timestamped signed raw rows. Host checks only.
+"""
 from pathlib import Path
 import importlib.util
 import os
@@ -15,14 +17,6 @@ spec.loader.exec_module(stage)
 
 with tempfile.TemporaryDirectory(prefix='rflink-alecto-') as tmp:
     build = Path(tmp)
-    # An injectable host clock verifies the inter-row CPU budget; production
-    # firmware uses the actual Arduino micros(). No firmware files are patched.
-    arduino = (ROOT / 'tests/remote_config/stubs/Arduino.h').read_text()
-    arduino = arduino.replace(
-        'inline unsigned long micros() { return test_millis * 1000UL; }',
-        'extern uint32_t test_clock_us, test_micros_step;\n'
-        'inline unsigned long micros() { auto now = test_clock_us; test_clock_us += test_micros_step; return now; }')
-    (build / 'Arduino.h').write_text(arduino)
     for profile in ('legacy', 'extended'):
         selected = stage.stage(ROOT, build / 'rflink_vendor',
                                'all' if profile == 'extended' else [30, 61, 254], profile)

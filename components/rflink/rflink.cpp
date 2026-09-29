@@ -2,8 +2,6 @@
 #include "rflink.h"
 #include "rflink_engine.h"
 #include <algorithm>
-#include <cstdio>
-#include <cstdlib>
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
@@ -23,100 +21,6 @@
 namespace esphome {
 namespace rflink {
 static const char *const TAG = "rflink";
-
-namespace {
-constexpr uint32_t ALECTO_SAMPLE_MIN_SPACING_MS = 5000U;
-constexpr uint32_t ALECTO_CANDIDATE_TIMEOUT_MS = 10U * 60U * 1000U;
-constexpr uint32_t ALECTO_SLOT_STALE_MS = 30U * 60U * 1000U;
-constexpr uint32_t ALECTO_PUBLISH_INTERVAL_MS = 5U * 60U * 1000U;
-constexpr int16_t ALECTO_CLUSTER_SPAN_TENTHS = 15;  // 1.5 C inside one accepted cluster.
-constexpr int16_t ALECTO_LARGE_JUMP_TENTHS = 100;  // 10 C needs all five samples.
-
-bool json_string_field(const std::string &json, const char *key, std::string &value) {
-  if (key == nullptr) return false;
-  std::string needle{"\""};
-  needle += key;
-  needle += "\":\"";
-  const size_t start = json.find(needle);
-  if (start == std::string::npos) return false;
-  const size_t value_start = start + needle.size();
-  const size_t end = json.find('"', value_start);
-  if (end == std::string::npos) return false;
-  value.assign(json, value_start, end - value_start);
-  return true;
-}
-
-bool replace_json_string_field(std::string &json, const char *key, const std::string &value) {
-  std::string needle{"\""};
-  needle += key;
-  needle += "\":\"";
-  const size_t start = json.find(needle);
-  if (start == std::string::npos) return false;
-  const size_t value_start = start + needle.size();
-  const size_t end = json.find('"', value_start);
-  if (end == std::string::npos) return false;
-  json.replace(value_start, end - value_start, value);
-  return true;
-}
-
-bool parse_hex_u16(const std::string &text, uint16_t &value) {
-  if (text.empty() || text.size() > 4) return false;
-  char *end = nullptr;
-  const unsigned long parsed = std::strtoul(text.c_str(), &end, 16);
-  if (end == text.c_str() || *end != '\0' || parsed > 0xFFFFUL) return false;
-  value = static_cast<uint16_t>(parsed);
-  return true;
-}
-
-bool parse_rflink_temp(const std::string &text, int16_t &tenths) {
-  uint16_t raw = 0;
-  if (!parse_hex_u16(text, raw)) return false;
-  const int16_t magnitude = static_cast<int16_t>(raw & 0x7FFFU);
-  if (magnitude > 2000) return false;  // defensive only; Plugin_030 is much tighter.
-  tenths = (raw & 0x8000U) != 0U ? static_cast<int16_t>(-magnitude) : magnitude;
-  return true;
-}
-
-std::string format_hex4(uint16_t value) {
-  char buffer[5];
-  std::snprintf(buffer, sizeof(buffer), "%04X", static_cast<unsigned>(value));
-  return buffer;
-}
-
-std::string format_rflink_temp(int16_t tenths) {
-  uint16_t raw = static_cast<uint16_t>(tenths < 0 ? -static_cast<int32_t>(tenths) : tenths);
-  if (tenths < 0) raw |= 0x8000U;
-  return format_hex4(raw);
-}
-
-uint8_t alecto_channel_from_id(uint16_t id) {
-  // Plugin_030 moves the original two channel bits into output ID bits 2..3.
-  // Original protocol mapping: 10=ch1, 01=ch2, 11=ch3.
-  const uint8_t code = static_cast<uint8_t>((id >> 2U) & 0x03U);
-  if (code == 2U) return 1U;
-  if (code == 1U) return 2U;
-  if (code == 3U) return 3U;
-  return 0U;
-}
-
-uint16_t alecto_id_for_channel(uint16_t base_id, uint8_t channel) {
-  uint16_t bits = 0;
-  if (channel == 1U) bits = 0x0008U;
-  else if (channel == 2U) bits = 0x0004U;
-  else if (channel == 3U) bits = 0x000CU;
-  return static_cast<uint16_t>((base_id & static_cast<uint16_t>(~0x000CU)) | bits);
-}
-
-void add_json_alecto_metadata(std::string &json, uint8_t slot, uint8_t channel, uint16_t base_id) {
-  const size_t end = json.rfind('}');
-  if (end == std::string::npos) return;
-  std::string extra = ",\"SLOT\":" + std::to_string(static_cast<unsigned>(slot));
-  extra += ",\"CHANNEL\":" + std::to_string(static_cast<unsigned>(channel));
-  extra += ",\"RFBASE\":\"" + format_hex4(base_id) + "\"";
-  json.insert(end, extra);
-}
-}  // namespace
-
 
 void RFLinkComponent::setup() {
   // With plugin_switches configured, only the mandatory preprocessor (001)
@@ -138,7 +42,7 @@ void RFLinkComponent::setup() {
     this->ready_timing_ = false;
     this->auto_running_ = false;
     if (this->build_text_sensor_ != nullptr) {
-      std::string build{"v0.2.0.7 · "};
+      std::string build{"v0.2.0.8 · "};
       build += ::rflink_legacy::plugin_profile();
       build += " · ";
       build += std::to_string(static_cast<unsigned>(::rflink_legacy::plugin_count()));
@@ -200,7 +104,7 @@ void RFLinkComponent::loop() {
 }
 
 void RFLinkComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.2.0.7 (EV-first decode; bounded Alecto burst recovery; 3-slot reliability gate):");
+  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.2.0.8 (original Plugin 030; no Alecto recovery or value gate):");
   ESP_LOGCONFIG(TAG, "  Plugin profile: %s", rflink_legacy::plugin_profile());
   ESP_LOGCONFIG(TAG, "  RX plugins compiled: %u", static_cast<unsigned>(::rflink_legacy::plugin_count()));
   ESP_LOGCONFIG(TAG, "  RX plugins enabled: %u", static_cast<unsigned>(::rflink_legacy::enabled_plugin_count()));
@@ -356,34 +260,11 @@ void RFLinkComponent::update_diagnostics_(uint32_t now, bool network_ready, bool
            static_cast<unsigned long>(this->repeat_history_resets_));
 #endif
   ESP_LOGI("rflink.rfdiag",
-           "ALECTO soft=%lu rebuilt=%lu frames=%u strong=%u weak=%u cs=%u; EV near=%lu exact50=%lu ok=%lu last=%u",
-           static_cast<unsigned long>(::rflink_legacy::get_alecto_soft_frame_count()),
-           static_cast<unsigned long>(::rflink_legacy::get_alecto_reconstructed_count()),
-           static_cast<unsigned>(::rflink_legacy::get_alecto_last_frames()),
-           static_cast<unsigned>(::rflink_legacy::get_alecto_last_data_strong()),
-           static_cast<unsigned>(::rflink_legacy::get_alecto_last_payload_weak()),
-           static_cast<unsigned>(::rflink_legacy::get_alecto_last_checksum_strong()),
+           "ALECTO=original; EV near=%lu exact50=%lu ok=%lu last=%u",
            static_cast<unsigned long>(::rflink_legacy::get_ev1527_near_frame_count()),
            static_cast<unsigned long>(::rflink_legacy::get_ev1527_exact50_frame_count()),
            static_cast<unsigned long>(::rflink_legacy::get_ev1527_accepted_frame_count()),
            static_cast<unsigned>(::rflink_legacy::get_ev1527_last_near_pulse_count()));
-  const auto &rx = ::rflink_legacy::get_alecto_recovery_diagnostics();
-  ESP_LOGI("rflink.alecto.rx",
-           "raw=%u normalized=%u long=%lu split=%lu rows=%lu clean=%lu rejected=%lu budget=%lu bits=%u cost=%u reason=%s",
-           static_cast<unsigned>(rx.raw_pulses), static_cast<unsigned>(rx.normalized_pulses),
-           static_cast<unsigned long>(rx.long_blocks), static_cast<unsigned long>(rx.split_boundaries),
-           static_cast<unsigned long>(rx.rows), static_cast<unsigned long>(rx.clean_rows),
-           static_cast<unsigned long>(rx.rejected_rows), static_cast<unsigned long>(rx.budget_stops),
-           static_cast<unsigned>(rx.known_bits), static_cast<unsigned>(rx.alignment_cost), rx.reason);
-  uint8_t alecto_slot_count = 0;
-  for (const auto &slot : this->alecto_slots_) if (slot.used) ++alecto_slot_count;
-  ESP_LOGI("rflink.alecto.gate", "received=%lu published=%lu dropped=%lu learned=%lu slots=%u last_id=%04X samples=%u reason=%s",
-           static_cast<unsigned long>(this->alecto_gate_received_),
-           static_cast<unsigned long>(this->alecto_gate_published_),
-           static_cast<unsigned long>(this->alecto_gate_dropped_),
-           static_cast<unsigned long>(this->alecto_gate_learned_),
-           static_cast<unsigned>(alecto_slot_count), static_cast<unsigned>(this->alecto_gate_last_id_),
-           static_cast<unsigned>(this->alecto_gate_samples_), this->alecto_gate_reason_);
 }
 #endif  // USE_RFLINK_AUTO_START
 
@@ -542,277 +423,6 @@ void RFLinkMonitoringSwitch::write_state(bool state) {
   this->publish_state(state);
 }
 
-bool RFLinkComponent::filter_alecto_message_(uint32_t now_ms) {
-  std::string protocol;
-  if (!json_string_field(this->message_buffer_, "NAME", protocol) || protocol != "Alecto V1") return true;
-
-  ++this->alecto_gate_received_;
-  this->alecto_gate_last_id_ = 0;
-  this->alecto_gate_samples_ = 0;
-  auto reject = [&](const char *reason, uint8_t samples = 0) {
-    this->alecto_gate_reason_ = reason;
-    this->alecto_gate_samples_ = samples;
-    ++this->alecto_gate_dropped_;
-    return false;
-  };
-  auto pending = [&](int16_t temperature, uint8_t count) {
-    // Only called when a time-separated sample was actually accepted. Raw
-    // candidates stay in the log; no unconfirmed temperature reaches HA.
-    ESP_LOGI("rflink.alecto.gate", "Pending ID=%04X temp=%.1f C samples=%u; awaiting confirmation",
-             static_cast<unsigned>(this->alecto_gate_last_id_),
-             static_cast<double>(temperature) / 10.0, static_cast<unsigned>(count));
-  };
-
-  std::string id_text;
-  uint16_t full_id = 0;
-  if (!json_string_field(this->message_buffer_, "ID", id_text) || !parse_hex_u16(id_text, full_id)) {
-    return reject("invalid_id");
-  }
-  this->alecto_gate_last_id_ = full_id;
-  // Plugin_030's displayed Alecto V1 ID has bits 0..1 clear and encodes the
-  // 3-position channel selector in bits 2..3. Reject impossible IDs early.
-  const uint8_t channel = alecto_channel_from_id(full_id);
-  if (channel == 0U || (full_id & 0x0003U) != 0U) {
-    return reject("invalid_channel");
-  }
-  const uint16_t base_id = static_cast<uint16_t>(full_id & static_cast<uint16_t>(~0x000CU));
-
-  std::string temp_text;
-  const bool has_temp = json_string_field(this->message_buffer_, "TEMP", temp_text);
-  int16_t temp_tenths = 0;
-  if (has_temp && !parse_rflink_temp(temp_text, temp_tenths)) {
-    return reject("invalid_temperature");
-  }
-  std::string battery_text;
-  const bool has_battery = json_string_field(this->message_buffer_, "BAT", battery_text);
-  const uint8_t battery_state = !has_battery ? 0U : (battery_text == "LOW" ? 2U : (battery_text == "OK" ? 1U : 0U));
-
-  auto reset_samples = [](AlectoSamples &samples) { samples = AlectoSamples{}; };
-  auto add_sample = [&](AlectoSamples &samples) -> bool {
-    if (!has_temp) return false;
-    if (samples.last_sample_ms != 0U &&
-        static_cast<uint32_t>(now_ms - samples.last_sample_ms) < ALECTO_SAMPLE_MIN_SPACING_MS)
-      return false;
-    samples.last_sample_ms = now_ms;
-    const uint8_t pos = samples.next;
-    samples.temp[pos] = temp_tenths;
-    samples.battery[pos] = battery_state;
-    samples.next = static_cast<uint8_t>((pos + 1U) % ALECTO_SAMPLE_COUNT);
-    if (samples.count < ALECTO_SAMPLE_COUNT) ++samples.count;
-    return true;
-  };
-  auto consensus = [](const AlectoSamples &samples, int16_t &median, uint8_t &cluster_count,
-                      uint8_t &battery) -> bool {
-    if (samples.count < 3U) return false;
-    int16_t sorted[ALECTO_SAMPLE_COUNT]{};
-    for (uint8_t i = 0; i < samples.count; ++i) sorted[i] = samples.temp[i];
-    std::sort(sorted, sorted + samples.count);
-    uint8_t best_start = 0, best_count = 0;
-    for (uint8_t start = 0; start < samples.count; ++start) {
-      uint8_t count = 1;
-      while (static_cast<uint8_t>(start + count) < samples.count &&
-             static_cast<int32_t>(sorted[start + count]) - sorted[start] <= ALECTO_CLUSTER_SPAN_TENTHS)
-        ++count;
-      if (count > best_count) {
-        best_start = start;
-        best_count = count;
-      }
-    }
-    if (best_count < 3U) return false;
-    median = sorted[best_start + best_count / 2U];
-    cluster_count = best_count;
-    uint8_t ok = 0, low = 0;
-    for (uint8_t i = 0; i < samples.count; ++i) {
-      const int32_t delta = static_cast<int32_t>(samples.temp[i]) - median;
-      if (delta < -ALECTO_CLUSTER_SPAN_TENTHS || delta > ALECTO_CLUSTER_SPAN_TENTHS) continue;
-      if (samples.battery[i] == 1U) ++ok;
-      else if (samples.battery[i] == 2U) ++low;
-    }
-    battery = low > ok ? 2U : (ok != 0U ? 1U : (low != 0U ? 2U : 0U));
-    return true;
-  };
-  auto sanitize_and_tag = [&](AlectoSlot &slot, uint8_t slot_index, int16_t stable_temp,
-                              uint8_t stable_battery) {
-    replace_json_string_field(this->message_buffer_, "ID", format_hex4(slot.full_id));
-    if (has_temp) replace_json_string_field(this->message_buffer_, "TEMP", format_rflink_temp(stable_temp));
-    if (has_battery && stable_battery != 0U)
-      replace_json_string_field(this->message_buffer_, "BAT", stable_battery == 2U ? "LOW" : "OK");
-    add_json_alecto_metadata(this->message_buffer_, static_cast<uint8_t>(slot_index + 1U), slot.channel, slot.base_id);
-  };
-
-  // A known transmitter is identified by its base ID; changing the physical
-  // 1/2/3 channel selector only changes the dedicated channel bits.
-  int slot_index = -1;
-  for (uint8_t i = 0; i < ALECTO_SLOT_COUNT; ++i) {
-    if (this->alecto_slots_[i].used && this->alecto_slots_[i].base_id == base_id) {
-      slot_index = i;
-      break;
-    }
-  }
-
-  if (slot_index >= 0) {
-    auto &slot = this->alecto_slots_[slot_index];
-    slot.last_seen_ms = now_ms;
-    if (channel == slot.channel) {
-      slot.pending_channel = 0;
-      slot.pending_channel_hits = 0;
-    } else if (slot.pending_channel != channel || slot.pending_channel_last_ms == 0U ||
-               static_cast<uint32_t>(now_ms - slot.pending_channel_last_ms) > ALECTO_CANDIDATE_TIMEOUT_MS) {
-      slot.pending_channel = channel;
-      slot.pending_channel_hits = 1;
-      slot.pending_channel_last_ms = now_ms;
-    } else if (static_cast<uint32_t>(now_ms - slot.pending_channel_last_ms) >= ALECTO_SAMPLE_MIN_SPACING_MS) {
-      slot.pending_channel_last_ms = now_ms;
-      if (slot.pending_channel_hits < 255U) ++slot.pending_channel_hits;
-      if (slot.pending_channel_hits >= 2U) {
-        const uint8_t old_channel = slot.channel;
-        slot.channel = channel;
-        slot.full_id = alecto_id_for_channel(slot.base_id, slot.channel);
-        slot.pending_channel = 0;
-        slot.pending_channel_hits = 0;
-        ESP_LOGI("rflink.alecto", "Alecto slot %u channel confirmed: %u -> %u; ID=%04X",
-                 static_cast<unsigned>(slot_index + 1), static_cast<unsigned>(old_channel),
-                 static_cast<unsigned>(slot.channel), static_cast<unsigned>(slot.full_id));
-      }
-    }
-
-    if (!has_temp) {
-      // Non-temperature Alecto packet types are allowed only for already
-      // learned transmitters. They keep their raw field values but receive the
-      // stable slot/channel metadata.
-      sanitize_and_tag(slot, static_cast<uint8_t>(slot_index), 0, 0);
-      ++this->alecto_gate_published_;
-      this->alecto_gate_reason_ = "published_other";
-      return true;
-    }
-
-    if (!add_sample(slot.samples)) {
-      return reject("spacing", slot.samples.count);
-    }
-    int16_t stable_temp = 0;
-    uint8_t cluster = 0, stable_battery = 0;
-    if (!consensus(slot.samples, stable_temp, cluster, stable_battery)) {
-      pending(temp_tenths, slot.samples.count);
-      return reject("pending_samples", slot.samples.count);
-    }
-    if (slot.last_publish_ms != 0U &&
-        static_cast<uint32_t>(now_ms - slot.last_publish_ms) < ALECTO_PUBLISH_INTERVAL_MS) {
-      return reject("publish_interval", slot.samples.count);
-    }
-    if (slot.has_published_temp) {
-      int32_t jump = static_cast<int32_t>(stable_temp) - slot.published_temp;
-      if (jump < 0) jump = -jump;
-      if (jump > ALECTO_LARGE_JUMP_TENTHS && cluster < ALECTO_SAMPLE_COUNT) {
-        pending(temp_tenths, slot.samples.count);
-        return reject("large_jump", slot.samples.count);
-      }
-    }
-    sanitize_and_tag(slot, static_cast<uint8_t>(slot_index), stable_temp, stable_battery);
-    slot.last_publish_ms = now_ms;
-    slot.published_temp = stable_temp;
-    slot.has_published_temp = true;
-    reset_samples(slot.samples);
-    ++this->alecto_gate_published_;
-    this->alecto_gate_reason_ = "published";
-    this->alecto_gate_samples_ = cluster;
-    return true;
-  }
-
-  // Unknown base ID: do not expose a single checksum-valid weak-signal packet.
-  // Learn a transmitter only after >=3 time-separated temperature samples form
-  // a tight cluster. This is what rejects one-off IDs such as 0044/00CC/00DC.
-  if (!has_temp) {
-    return reject("unknown_non_temperature");
-  }
-  for (auto &candidate : this->alecto_candidates_) {
-    if (candidate.used && static_cast<uint32_t>(now_ms - candidate.last_seen_ms) > ALECTO_CANDIDATE_TIMEOUT_MS)
-      candidate = AlectoCandidate{};
-  }
-  AlectoCandidate *candidate = nullptr;
-  for (auto &item : this->alecto_candidates_) {
-    if (item.used && item.base_id == base_id) {
-      candidate = &item;
-      break;
-    }
-  }
-  if (candidate == nullptr) {
-    for (auto &item : this->alecto_candidates_) {
-      if (!item.used) {
-        candidate = &item;
-        break;
-      }
-    }
-  }
-  if (candidate == nullptr) {
-    candidate = &this->alecto_candidates_[0];
-    for (auto &item : this->alecto_candidates_)
-      if (item.last_seen_ms < candidate->last_seen_ms) candidate = &item;
-  }
-  if (!candidate->used || candidate->base_id != base_id) {
-    *candidate = AlectoCandidate{};
-    candidate->used = true;
-    candidate->base_id = base_id;
-    candidate->first_ms = now_ms;
-  }
-  candidate->last_seen_ms = now_ms;
-  const bool added = add_sample(candidate->samples);
-  if (added && channel <= 3U && candidate->channel_votes[channel] < 255U)
-    ++candidate->channel_votes[channel];
-
-  int16_t stable_temp = 0;
-  uint8_t cluster = 0, stable_battery = 0;
-  if (!consensus(candidate->samples, stable_temp, cluster, stable_battery)) {
-    if (added) pending(temp_tenths, candidate->samples.count);
-    return reject(added ? "learning" : "spacing", candidate->samples.count);
-  }
-
-  int assign = -1;
-  for (uint8_t i = 0; i < ALECTO_SLOT_COUNT; ++i) {
-    if (!this->alecto_slots_[i].used) {
-      assign = i;
-      break;
-    }
-  }
-  if (assign < 0) {
-    uint32_t stalest_age = 0;
-    for (uint8_t i = 0; i < ALECTO_SLOT_COUNT; ++i) {
-      const uint32_t age = static_cast<uint32_t>(now_ms - this->alecto_slots_[i].last_seen_ms);
-      if (age >= ALECTO_SLOT_STALE_MS && age >= stalest_age) {
-        stalest_age = age;
-        assign = i;
-      }
-    }
-  }
-  if (assign < 0) {
-    return reject("slots_full", candidate->samples.count);
-  }
-
-  uint8_t learned_channel = channel;
-  for (uint8_t ch = 1; ch <= 3; ++ch)
-    if (candidate->channel_votes[ch] > candidate->channel_votes[learned_channel]) learned_channel = ch;
-  auto &slot = this->alecto_slots_[assign];
-  slot = AlectoSlot{};
-  slot.used = true;
-  slot.base_id = base_id;
-  slot.channel = learned_channel;
-  slot.full_id = alecto_id_for_channel(base_id, learned_channel);
-  slot.last_seen_ms = now_ms;
-  slot.last_publish_ms = now_ms;
-  slot.has_published_temp = true;
-  slot.published_temp = stable_temp;
-  sanitize_and_tag(slot, static_cast<uint8_t>(assign), stable_temp, stable_battery);
-  *candidate = AlectoCandidate{};
-  this->alecto_gate_reason_ = "learned";
-  this->alecto_gate_samples_ = cluster;
-  ++this->alecto_gate_learned_;
-  ++this->alecto_gate_published_;
-  ESP_LOGI("rflink.alecto", "Alecto slot %u learned: base=%04X ID=%04X channel=%u temp=%.1f C",
-           static_cast<unsigned>(assign + 1), static_cast<unsigned>(slot.base_id),
-           static_cast<unsigned>(slot.full_id), static_cast<unsigned>(slot.channel),
-           static_cast<double>(stable_temp) / 10.0);
-  return true;
-}
-
 bool RFLinkComponent::on_receive(remote_base::RemoteReceiveData data) {
   if (!this->decode_enabled_) {
     ++this->skipped_frames_;
@@ -848,71 +458,24 @@ bool RFLinkComponent::on_receive(remote_base::RemoteReceiveData data) {
     if (frame_us > this->max_frame_callback_us_) this->max_frame_callback_us_ = frame_us;
   }
   if (unsupported.valid) {
-    std::string alecto_diagnostic;
-    const bool alecto_candidate = unsupported.pulse_count == 74 &&
-        ::rflink_legacy::diagnose_alecto_v1_candidate(data.get_raw_data(), alecto_diagnostic);
-
-    // Plugin 254 can see dozens of noise frames per second on a 433 MHz
-    // receiver. Publishing every one of them over the native API creates a
-    // feedback loop (heap churn + logger/API traffic) exactly while timing
-    // sensitive RF capture is running. Keep exact Alecto candidates immediate,
-    // but throttle generic unsupported telemetry to 4 Hz.
     static uint32_t last_unsupported_publish_ms = 0;
     const uint32_t unsupported_now_ms = millis();
-    const bool publish_unsupported = alecto_candidate || last_unsupported_publish_ms == 0 ||
+    const bool publish_unsupported = last_unsupported_publish_ms == 0 ||
         static_cast<uint32_t>(unsupported_now_ms - last_unsupported_publish_ms) >= 250U;
     if (publish_unsupported) {
       last_unsupported_publish_ms = unsupported_now_ms;
       if (this->unsupported_signal_text_sensor_ != nullptr) {
-        // A 74-pulse Alecto candidate is far more useful in HA when we expose
-        // the exact Plugin_030 reject reason instead of only a truncated pulse list.
         this->unsupported_signal_text_sensor_->publish_state(
-            alecto_candidate ? alecto_diagnostic : unsupported.summary);
+            unsupported.summary);
       }
       if (this->unsupported_pulse_count_sensor_ != nullptr)
         this->unsupported_pulse_count_sensor_->publish_state(unsupported.pulse_count);
     }
 
-    if (alecto_candidate) {
-      ESP_LOGW("rflink.alecto", "%s; plugin030=%s", alecto_diagnostic.c_str(),
-               ::rflink_legacy::is_plugin_enabled(30) ? "ON" : "OFF");
-    }
-    if (alecto_candidate || unsupported.alecto_candidate) {
-      // Full candidate captures (not only exactly 74 pulses) are essential for
-      // diagnosing glued repeats. Plugin 254 must be ON. Limit one complete
-      // capture to 5 seconds and chunks to 32 timings; never truncate silently.
-      static uint32_t last_alecto_raw_log_ms = 0;
-      const uint32_t raw_now_ms = millis();
-      if (last_alecto_raw_log_ms == 0 ||
-          static_cast<uint32_t>(raw_now_ms - last_alecto_raw_log_ms) >= 5000U) {
-        last_alecto_raw_log_ms = raw_now_ms;
-        const auto &raw = data.get_raw_data();
-        size_t first = 0, end = raw.size();
-        while (first < end && raw[first] < 0) ++first;
-        if (end > first && raw[end - 1] <= -5000) --end;
-        const bool timeout = end > first && raw[end - 1] > 0;
-        const size_t count = end - first + (timeout ? 1U : 0U);
-        const size_t parts = (count + 31U) / 32U;
-        for (size_t offset = 0; offset < count; offset += 32U) {
-          std::string part;
-          part.reserve(208);
-          for (size_t pos = offset; pos < count && pos < offset + 32U; ++pos) {
-            if (pos != offset) part += ',';
-            const int64_t value = pos < end - first ? raw[first + pos] : -5000;
-            part += std::to_string(value < 0 ? -value : value);
-          }
-          ESP_LOGW("rflink.alecto.raw", "capture=%lu pulses=%u part=%u/%u: %s",
-                   static_cast<unsigned long>(raw_now_ms), static_cast<unsigned>(count),
-                   static_cast<unsigned>(offset / 32U + 1U), static_cast<unsigned>(parts), part.c_str());
-        }
-      }
-    }
     if (this->log_messages_ && publish_unsupported)
       ESP_LOGD(TAG, "Plugin 254 unsupported RF: %s%s", unsupported.summary.c_str(),
                unsupported.truncated ? " [HA summary truncated]" : "");
   }
-  if (!this->message_buffer_.empty() && !this->filter_alecto_message_(now_ms))
-    this->message_buffer_.clear();
   if (!this->message_buffer_.empty()) {
     ++this->message_count_;
     if (this->log_messages_) ESP_LOGD(TAG, "%s", this->message_buffer_.c_str());

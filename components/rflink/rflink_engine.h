@@ -19,7 +19,6 @@ struct FrameObservation {
 // Home Assistant text-sensor state. The exact pulse count remains separate.
 struct UnsupportedObservation {
   bool valid{false};
-  bool alecto_candidate{false};  // bounded Alecto waveform gate passed
   uint16_t pulse_count{0};
   bool truncated{false};
   std::string summary;
@@ -27,34 +26,6 @@ struct UnsupportedObservation {
 void reset(bool enable_all_compiled = true);
 size_t plugin_count();
 const char *plugin_profile();
-
-// Cumulative Alecto recovery diagnostics since bridge reset. soft_frame_count
-// counts damaged rows that passed the cheap Alecto waveform gate + alignment;
-// reconstructed_count counts checksum/range-valid canonical rows prepared for
-// the untouched Plugin_030.
-uint32_t get_alecto_soft_frame_count();
-uint32_t get_alecto_reconstructed_count();
-uint8_t get_alecto_last_frames();
-uint8_t get_alecto_last_data_strong();
-uint8_t get_alecto_last_checksum_strong();
-uint8_t get_alecto_last_payload_weak();
-
-// Last candidate details plus cumulative counts. No sensor values are exposed
-// here; checksum-valid messages still pass the component's reliability gate.
-struct AlectoRecoveryDiagnostics {
-  uint32_t long_blocks{0};
-  uint32_t split_boundaries{0};
-  uint32_t rows{0};
-  uint32_t clean_rows{0};
-  uint32_t rejected_rows{0};
-  uint32_t budget_stops{0};
-  uint16_t raw_pulses{0};
-  uint16_t normalized_pulses{0};
-  uint16_t alignment_cost{0};
-  uint8_t known_bits{0};
-  const char *reason{"waiting"};
-};
-const AlectoRecoveryDiagnostics &get_alecto_recovery_diagnostics();
 
 // EV1527 receive-path diagnostics. near counts raw 40..60-pulse frames seen
 // immediately before Plugin_061; exact50 is the protocol's required pulse
@@ -79,12 +50,6 @@ uint64_t compiled_capability_mask();
 uint64_t enabled_capability_mask();
 bool plugin_supports_field(uint16_t plugin_id, const char *field);
 bool enabled_plugins_support_field(const char *field);
-
-// Diagnose a legacy Alecto V1 (Plugin 030) candidate without changing or bypassing
-// the original RFLink plugin. Returns true only when the normalized frame has the
-// Alecto V1 pulse count (74); summary then explains the first Plugin_030 reject
-// reason or reports that the frame would pass Plugin_030.
-bool diagnose_alecto_v1_candidate(const std::vector<int32_t> &timings, std::string &summary);
 
 // Clear only duplicate/repeat history; plugin enable masks and sequence stay unchanged.
 void reset_repeat_history();

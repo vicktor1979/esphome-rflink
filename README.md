@@ -723,13 +723,15 @@ Sikeres feltöltés után az 1–2 perces megfigyelés gyakorlati első próba, 
 
 ### Alecto V1: látszó RF jel, de nincs stabil dekódolás
 
-Alecto V1/Plugin 030 esetén a v0.1.9.8 óta a bridge több sérült ismétlésből is képes checksum-valid 36 bites sort helyreállítani, miközben az eredeti `Plugin_030.c` változatlan marad. A hardveres tesztben az Alecto hőmérséklet és elemállapot ismét stabilan megjelent; az adott készülék nem küld páratartalmat. Az RF rolling ID külön diagnosztikai entitásban látható.
+A v0.2.0.8 az eredeti, módosítatlan `Plugin_030.c` feldolgozását használja. Az egyedi Alecto-zajszűrés, impulzus- és bithelyreállítás, ismétlésekből való összeállítás, többmintás betanulás, hőmérséklet-simítás és ötperces publikálási korlát kikerült. A plugin saját kerethossz-, ellenőrzőösszeg-, tartomány- és ismétlésvizsgálata megmarad. Minden általa kiadott üzenet közvetlenül továbbjut az `on_message` kezelőkhöz.
+
+A külön `packages/rflink-alecto-006c.yaml` csomag a nyers pluginüzenetből azonnal frissíti a hőmérsékletet és az elemállapotot. Az első három hőmérséklet-adó teljes RF ID-jét érkezési sorrendben rendeli a meglévő három kijelzési helyhez, újraindulásig. A korábbi hozzáadott `SLOT`, `CHANNEL`, `RFBASE` mezők már nem részei az RF-üzenetnek; a csatorna-kijelzés `Nincs adat`. Részletek: `UPDATE_v0.2.0.8_HU.md`. A visszaállítás rádiós vételi sikert önmagában nem igazol.
 
 
 ### Elvárt verzió- és állapotjelzések
 
 ```text
-RFLink RX compatibility bridge v0.2.0.1 (simple plugin restore; active plugin list; capability-aware diagnostics)
+RFLink RX compatibility bridge v0.2.0.8 (original Plugin 030; no Alecto recovery or value gate)
 RX plugins compiled: 48
 Remote Receiver rxgate2 (ESP8266 / based on 2026.9.0)
 High frequency configured: NO

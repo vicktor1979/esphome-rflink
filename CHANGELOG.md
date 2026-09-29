@@ -2,6 +2,15 @@
 
 Az RFLink ESPHome komponens fontosabb verziói és változásai.
 
+## v0.2.0.8
+
+- Kérésre visszaállítva az Alecto V1 eredeti Plugin 030 feldolgozása. A pluginforrás bájtról bájtra változatlan; saját kerethossz-, checksum-, tartomány- és ismétlésvizsgálata megmarad.
+- Eltávolítva a bridge egyedi Alecto-előszűrése, impulzusillesztése, bitkonszenzusa, szintetikus keretkészítése és összefolyó ismétlések feldarabolása, a hozzájuk tartozó pufferekkel és diagnosztikával együtt.
+- Eltávolítva a többmintás betanulás, hőmérséklet/elemállapot-simítás, ID- és csatorna-átírás, háromadós elfogadási korlát, ötperces publikálási korlát és nagy hőmérséklet-ugrás szűrése. Az eredeti plugin üzenete azonnal, változatlan mezőértékekkel jut tovább.
+- A külön Alecto-szenzorcsomag nyers pluginüzeneteket fogad; megtartott entitásazonosítók mellett legfeljebb három teljes RF ID-hez rendeli a kijelzési helyeket. A bridge összes elfogadott üzenete továbbra is elérhető. Kitalált csatornaérték helyett `Nincs adat` jelenik meg.
+- Megmarad az EV1527 feldolgozása, a runtime pluginkapcsolók, az automatikus Wi-Fi/API indulás, az OTA-eseménykezelés és a v0.2.0.7 név-/OTA-példajavítása.
+- A korábbi helyreállítási teszt fájlneve megmaradt, tartalma az eredeti működés regresszióit ellenőrzi. Új ellenőrzés a tényleges Alecto YAML-megjelenítési kódra. Telepítés: `UPDATE_v0.2.0.8_HU.md`.
+
 ## v0.2.0.7
 
 - A generált pluginkapcsolók neveiben az ASCII `/` helyére már a sémaellenőrzés előtt `⁄` (U+2044) kerül. Ez megegyezik az ESPHome eddigi automatikus cseréjével; megszűnik a névre vonatkozó figyelmeztetés. Az összes perjeles pluginnévre érvényes, köztük a 061-es EV1527-re.
