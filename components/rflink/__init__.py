@@ -91,9 +91,12 @@ def validate_plugin_switch(value):
     plugin_id = cv.int_range(min=1, max=255)(int(value))
     if plugin_id == 1:
         raise cv.Invalid("Plugin 001 is the RFLink packet preprocessor and is always enabled; do not list it.")
+    # Match ESPHome's existing normalization before the entity schema validates it.
+    # ASCII '/' is reserved; U+2044 keeps the displayed name used by current builds.
+    plugin_name = PLUGIN_NAMES.get(plugin_id, "Plugin").replace("/", "\u2044")
     return PLUGIN_SWITCH_SCHEMA({
         CONF_PLUGIN_NUMBER: plugin_id,
-        CONF_NAME: f"RFLink {plugin_id:03d} · {PLUGIN_NAMES.get(plugin_id, 'Plugin')}",
+        CONF_NAME: f"RFLink {plugin_id:03d} · {plugin_name}",
     })
 
 

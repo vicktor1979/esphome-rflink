@@ -1,5 +1,6 @@
 # RFLink ESPHome – stable basic configuration example.
-# Release: v0.2.0.1
+# Configuration: v0.2.0.7; ESPHome >= 2026.9.0.
+# Sources track main so a manual GitHub upload needs no release tag.
 #
 # ESP8266 / NodeMCU v2 example using rxgate2.
 # Native Home Assistant API, RF learning and runtime plugin control.
@@ -20,13 +21,13 @@ esp8266:
 packages:
   rflink_api:
     url: https://github.com/vicktor1979/esphome-rflink
-    ref: v0.2.0.1
+    ref: main
     refresh: 5min
     files:
       - packages/rflink-ha-data-only.yaml
 
 external_components:
-  - source: github://vicktor1979/esphome-rflink@v0.2.0.1
+  - source: github://vicktor1979/esphome-rflink@main
     components: [rflink, remote_receiver, rflink_remote]
     refresh: 5min
 
@@ -48,7 +49,8 @@ logger:
 
 ota:
   - platform: esphome
-    password: !secret ota_password
+    # Reuses api.encryption.key. Existing devices: see UPDATE_v0.2.0.7_HU.md.
+    encryption:
     # The RFLink component owns the full stop/restart sequence.
     on_begin:
       then:

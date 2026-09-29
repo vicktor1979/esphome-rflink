@@ -2,6 +2,14 @@
 
 Az RFLink ESPHome komponens fontosabb verziói és változásai.
 
+## v0.2.0.7
+
+- A generált pluginkapcsolók neveiben az ASCII `/` helyére már a sémaellenőrzés előtt `⁄` (U+2044) kerül. Ez megegyezik az ESPHome eddigi automatikus cseréjével; megszűnik a névre vonatkozó figyelmeztetés. Az összes perjeles pluginnévre érvényes, köztük a 061-es EV1527-re.
+- A két fő példa az OTA `password:` helyett `encryption:` beállítást használ, a meglévő API-kulccsal. Az RFLink `on_begin` és `on_error` eseménykezelői megmaradnak. ESPHome 2026.9.0 vagy újabb szükséges; régi firmware-ről az átállási sorrendet az útmutató írja le.
+- A két fő példa forráshivatkozása `main`, így kézi GitHub-feltöltés után új tag létrehozása nélkül eléri a javítást. A korábbi példák még a v0.2.0.1 tagre hivatkoztak.
+- Az Alecto-helyreállítás a v0.2.0.6-tal azonos. Ez a csomag annak módosított fájljait is tartalmazza.
+- Telepítés és a saját ESPHome YAML szükséges módosítása: `UPDATE_v0.2.0.7_HU.md`.
+
 ## v0.2.0.6
 
 - Alecto: az előszűrés már a teljes, a legacy motor által elfogadott blokkot kezeli, legfeljebb 291 impulzusig. A 120 impulzusos sorhatár csak a rövid zajimpulzusok összevonása és az ismétlések szétválasztása után érvényesül.
