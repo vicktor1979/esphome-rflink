@@ -1,0 +1,92 @@
+# Egy Mebus homerseklet-kijelzes az eredeti Plugin_040 kimenetehez.
+# A legutobbi ervenyes Mebus-merest jeleniti meg; nincs ID-hoz rogzitve.
+# Az ID formatuma: ket hex karakter adoazonosito + ket hex karakter csatorna.
+# Pelda: e501 -> ado e5, csatorna 1.
+# Hianyzo/hibas homerseklet eseten megmarad az utolso ervenyes allapot.
+# A Plugin_040 nem ad ki BAT/HUM mezot, ezert ilyen entitas nincs ebben a csomagban.
+# A 040-es plugint engedelyezni kell futas kozben is.
+
+esphome:
+  on_boot:
+    - priority: 1000
+      then:
+        - lambda: |-
+            id(rf_bridge).register_plugin_diagnostic_sensor(40, id(mebus_temp));
+            id(rf_bridge).register_plugin_diagnostic_text_sensor(40, id(mebus_current_id));
+            id(rf_bridge).register_plugin_diagnostic_text_sensor(40, id(mebus_channel));
+
+json:
+
+sensor:
+  - platform: template
+    id: mebus_temp
+    name: "Mebus hőmérséklet"
+    icon: mdi:thermometer
+    internal: false
+    entity_category: ""
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+
+text_sensor:
+  - platform: template
+    id: mebus_current_id
+    name: "Mebus 1 RF ID"
+    icon: mdi:identifier
+    internal: false
+    entity_category: diagnostic
+    update_interval: never
+
+  - platform: template
+    id: mebus_channel
+    name: "Mebus 1 csatorna"
+    icon: mdi:numeric
+    internal: false
+    entity_category: diagnostic
+    update_interval: never
+
+script:
+  - id: mebus_process
+    mode: queued
+    max_runs: 5
+    parameters:
+      message: string
+    then:
+      - lambda: |-
+          const bool valid = json::parse_json(message, [&](JsonObject root) -> bool {
+            namespace data = esphome::rflink_data;
+            const std::string protocol = root["NAME"] | "";
+            if (protocol != "Mebus") return true;
+
+            const std::string device = root["ID"] | "";
+            if (device.empty()) return true;
+            const auto temperature = data::number(root, data::TEMP);
+            if (!temperature.valid) return true;
+
+            // Plugin_040: ID = adoazonosito (1 byte) + csatorna (1 byte).
+            uint32_t raw_id = 0;
+            if (device.size() != 4 ||
+                !data::parse_unsigned(device.c_str(), 16, 0xFFFFU, raw_id))
+              return true;
+            const uint32_t channel = raw_id & 0xFFU;
+            const std::string channel_text = channel <= 3U
+                ? std::to_string(channel) : "Nincs adat";
+
+            data::publish_text(id(mebus_current_id), device);
+            data::publish_text(id(mebus_channel), channel_text);
+            data::publish_number(id(mebus_temp), temperature, false);
+
+            return true;
+          });
+          if (!valid)
+            ESP_LOGW("rflink.device", "Hibas JSON a Mebus feldolgozasakor.");
+
+# The on_message list is appended to the main YAML rflink.on_message handlers.
+rflink:
+  on_message:
+    - then:
+        - script.execute:
+            id: mebus_process
+            message: !lambda return x;
