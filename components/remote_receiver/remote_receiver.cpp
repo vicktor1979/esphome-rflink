@@ -4,12 +4,16 @@
 // pre-setup capture gate, pin-IRQ detach/reattach, ring reset, edge counter.
 // rxgate2: independently configurable high-frequency-loop request.
 // v0.1.9.1: adaptive, bounded scheduler boost when completed frames back up.
-// The ISR, filter, timestamping and one-frame-per-loop delivery are unchanged.
+// v0.2.0.9: optional bounded RFLink-style polling acquisition.
+// Polling based on RFLink-5.6wj 2_Signal.cpp / FetchSignal(), Marc RIVES
+// (StormTeam), 2018..2020; RFLink project GPL-3.0 license retained.
+// The default IRQ path, including its filter and timestamping, is unchanged.
 #include "remote_receiver.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 #include <new>
+#include <algorithm>
 
 namespace esphome::remote_receiver {
 static const char *const TAG = "remote_receiver";
@@ -185,24 +189,26 @@ void RemoteReceiverComponent::set_capture_enabled(bool enabled) {
     this->last_backlog_boost_stop_ms_ = 0;
     this->reset_capture_state_();
     this->capture_active_ = true;
-    this->pin_->attach_interrupt(RemoteReceiverComponentStore::gpio_intr, &this->store_, gpio::INTERRUPT_ANY_EDGE);
-    if (this->high_frequency_) this->high_freq_.start();
+    if (!this->rflink_polling_)
+      this->pin_->attach_interrupt(RemoteReceiverComponentStore::gpio_intr, &this->store_, gpio::INTERRUPT_ANY_EDGE);
+    if (this->high_frequency_ || this->rflink_polling_) this->high_freq_.start();
   } else {
-    this->pin_->detach_interrupt();
+    if (!this->rflink_polling_) this->pin_->detach_interrupt();
     this->capture_active_ = false;
     this->backlog_boost_active_ = false;
     this->high_freq_.stop();
     this->reset_capture_state_();
   }
-  ESP_LOGI(TAG, "RX gate: capture=%s; irq=%s; fast_loop=%s",
-           enabled ? "ON" : "OFF", enabled ? "ON" : "OFF",
+  ESP_LOGI(TAG, "RX gate: capture=%s; mode=%s; irq=%s; fast_loop=%s",
+           enabled ? "ON" : "OFF", this->get_capture_mode_name(),
+           enabled && !this->rflink_polling_ ? "ON" : "OFF",
            this->is_high_frequency_requested() ? "ON" : "OFF");
 }
 
 void RemoteReceiverComponent::set_high_frequency(bool enabled) {
   if (this->high_frequency_ == enabled) return;
   this->high_frequency_ = enabled;
-  if (this->capture_active_ && enabled) {
+  if (this->capture_active_ && (enabled || this->rflink_polling_)) {
     // Explicit fast mode supersedes an adaptive boost without toggling the
     // requester off in between.
     this->backlog_boost_active_ = false;
@@ -219,6 +225,9 @@ void RemoteReceiverComponent::set_high_frequency(bool enabled) {
 
 void RemoteReceiverComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "Remote Receiver rxgate2 (ESP8266 / based on 2026.9.0):");
+  ESP_LOGCONFIG(TAG, "  Capture mode: %s", this->get_capture_mode_name());
+  if (this->rflink_polling_)
+    ESP_LOGCONFIG(TAG, "  Polling: seek <=25 ms; frame <=200 ms; <=291 entries; scheduler fast loop required");
   ESP_LOGCONFIG(TAG, "  Capture enabled: %s", this->capture_active_ ? "YES" : "NO");
   ESP_LOGCONFIG(TAG, "  High frequency configured: %s", this->high_frequency_ ? "YES" : "NO");
   ESP_LOGCONFIG(TAG, "  Adaptive backlog boost: bounded 8 ms / 20 ms cooldown when high_frequency=false");
@@ -227,9 +236,83 @@ void RemoteReceiverComponent::dump_config() {
   LOG_PIN("  Pin: ", this->pin_);
 }
 
+void IRAM_ATTR HOT RemoteReceiverComponent::capture_polling_() {
+  // Based on RFLink-5.6wj FetchSignal(): seek a >=400 us LOW preamble,
+  // then measure alternating levels directly. A too-short pulse aborts the
+  // capture; it is NOT merged into another bit. Interrupts remain enabled.
+  // Do not allocate, log, publish, or decode in the measurement loop.
+  // Unlike upstream, cap the total packet time so continuous RF cannot keep
+  // ESPHome/API/OTA and the EV gesture timers blocked indefinitely.
+  static constexpr uint32_t SEEK_US = 25000;
+  static constexpr uint32_t FRAME_US = 200000;
+  auto &s = this->store_;
+  const uint32_t limit = std::min<uint32_t>(s.buffer_size - 1U, 291U);
+  const uint32_t seek_started = micros();
+  uint32_t edge_at = seek_started, frame_started = 0, count = 0;
+  bool level = s.pin.digital_read(), capturing = false, complete = false;
+  while (true) {
+    const bool next = s.pin.digital_read();
+    const uint32_t now = micros();
+    const uint32_t width = now - edge_at;
+    if (next != level) {
+      s.edge_count = s.edge_count + 1U;  // observed polling edges, not IRQ calls
+      if (!capturing) {
+        if (!level && width >= 400U) {
+          capturing = true;
+          frame_started = now;
+        }
+      } else {
+        if (width < s.filter_us) {
+          ++this->polling_short_rejects_;
+          return;
+        }
+        if (width >= s.idle_us) {
+          if (!level) {
+            s.buffer[count++] = -static_cast<int32_t>(s.idle_us);
+            complete = true;
+          }
+          break;
+        }
+        s.buffer[count++] = level ? static_cast<int32_t>(width) : -static_cast<int32_t>(width);
+        if (count >= limit) {
+          ++this->polling_limit_rejects_;
+          return;
+        }
+      }
+      level = next;
+      edge_at = now;
+    } else if (capturing && width >= s.idle_us) {
+      if (!level) {
+        s.buffer[count++] = -static_cast<int32_t>(s.idle_us);
+        complete = true;
+      }
+      break;
+    }
+    if (capturing) {
+      if (static_cast<uint32_t>(now - frame_started) >= FRAME_US) {
+        ++this->polling_limit_rejects_;
+        return;
+      }
+    } else if (static_cast<uint32_t>(now - seek_started) >= SEEK_US) {
+      return;
+    }
+  }
+  if (!complete || count < 2U) return;
+  // Reuse the same ESPHome listener path as IRQ capture, once per loop.
+  this->temp_.clear();
+  this->temp_.reserve(count);
+  for (uint32_t i = 0; i < count; ++i) this->temp_.push_back(static_cast<int32_t>(s.buffer[i]));
+  ++this->frame_count_;
+  this->call_listeners_dumpers_();
+}
+
 void RemoteReceiverComponent::loop() {
   if (!this->capture_active_ || this->is_failed()) return;
   ++this->loop_calls_;
+  if (this->rflink_polling_) {
+    this->capture_polling_();
+    return;
+  }
   auto &s = this->store_;
   const uint32_t now_ms = millis();
   const uint32_t edges_now = s.edge_count;

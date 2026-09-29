@@ -31,6 +31,8 @@ const char *plugin_profile();
 // immediately before Plugin_061; exact50 is the protocol's required pulse
 // count; accepted counts Plugin_061 successes including suppressed repeats.
 uint32_t get_ev1527_near_frame_count();
+uint32_t get_alecto_exact74_frame_count();
+uint32_t get_alecto_accepted_frame_count();
 uint32_t get_ev1527_exact50_frame_count();
 uint32_t get_ev1527_accepted_frame_count();
 uint8_t get_ev1527_last_near_pulse_count();

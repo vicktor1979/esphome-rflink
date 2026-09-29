@@ -19,6 +19,7 @@ AUTO_LOAD = ["remote_base"]
 MULTI_CONF = True
 CONF_CAPTURE_ENABLED = "capture_enabled"
 CONF_HIGH_FREQUENCY = "high_frequency"
+CONF_CAPTURE_MODE = "capture_mode"
 remote_receiver_ns = cg.esphome_ns.namespace("remote_receiver")
 ToleranceMode = cg.esphome_ns.namespace("remote_base").enum("ToleranceMode")
 TOLERANCE_MODE = {
@@ -51,6 +52,14 @@ def validate_tolerance(value: Any):
         type_ = "time"
     return TOLERANCE_SCHEMA({CONF_VALUE: value, CONF_TYPE: type_})
 
+def validate_capture_mode(config):
+    if config[CONF_CAPTURE_MODE] == "rflink_polling":
+        if config[CONF_IDLE].total_microseconds != 5000 or config[CONF_FILTER].total_microseconds != 100:
+            raise cv.Invalid("rflink_polling requires idle: 5ms and filter: 100us, matching RFLink-5.6wj")
+        if config[CONF_BUFFER_SIZE] < 292:
+            raise cv.Invalid("rflink_polling requires buffer_size of at least 292b")
+    return config
+
 CONFIG_SCHEMA = cv.All(
     remote_base.validate_triggers(
         cv.Schema({
@@ -65,8 +74,9 @@ CONFIG_SCHEMA = cv.All(
                 cv.positive_time_period_microseconds, cv.Range(max=TimePeriod(microseconds=4294967295))),
             cv.Optional(CONF_CAPTURE_ENABLED, default=True): cv.boolean,
             cv.Optional(CONF_HIGH_FREQUENCY, default=True): cv.boolean,
+            cv.Optional(CONF_CAPTURE_MODE, default="interrupt"): cv.one_of("interrupt", "rflink_polling", lower=True),
         }).extend(cv.COMPONENT_SCHEMA)
-    ), cv.only_on_esp8266, cv.only_with_arduino,
+    ), cv.only_on_esp8266, cv.only_with_arduino, validate_capture_mode,
 )
 
 async def to_code(config):
@@ -81,5 +91,6 @@ async def to_code(config):
     cg.add(var.set_buffer_size(config[CONF_BUFFER_SIZE]))
     cg.add(var.set_filter_us(config[CONF_FILTER]))
     cg.add(var.set_idle_us(config[CONF_IDLE]))
+    cg.add(var.set_rflink_polling(config[CONF_CAPTURE_MODE] == "rflink_polling"))
     cg.add(var.set_high_frequency(config[CONF_HIGH_FREQUENCY]))
     cg.add(var.set_capture_enabled(config[CONF_CAPTURE_ENABLED]))

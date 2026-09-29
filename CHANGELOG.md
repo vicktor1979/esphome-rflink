@@ -2,6 +2,15 @@
 
 Az RFLink ESPHome komponens fontosabb verziói és változásai.
 
+## v0.2.0.9 — választható eredeti jellegű vétel, próbaverzió
+
+- A feltöltött RFLink-5.6wj `Plugin_030.c`, `Plugin_061.c` és `Plugin_001.c` forrása megegyezik a jelenlegi forrással; a fő különbség a GPIO polling és a megszakításos jelmérés.
+- Új, kifejezetten választandó `remote_receiver.capture_mode: rflink_polling`. A régi YAML alapértelmezése `interrupt`; az IRQ-adatgyűjtés és a dekódolók változatlanok.
+- Polling: legalább 400 µs LOW előtag, 100 µs alatti impulzusra eldobás, 5 ms lezárás; legfeljebb 25 ms keresés, 200 ms keret és 291 tárolt időzítés. A rendszermegszakítások engedélyezve maradnak. A vételi kapu polling esetén is működik.
+- A polling mód saját gyors főciklust igényel; nem telepít GPIO ISR-t. Mért élek számlálója `edges` néven jelenik meg a korábbi `irq` helyett. Külön vételimód-/eldobásszámlálók és eredeti Alecto 74-impulzusos/elfogadott keretszámlálók kerültek a ritka diagnosztikába.
+- GPIO-alapú host tesztek: Alecto, hibás checksum, EV ismétlések, rövid/dupla/hosszú nyomás, közbeiktatott Alecto, zaj, időkorlát, óraátfordulás és vételi kapu; a meglévő IRQ-regressziókkal együtt. A host teszt nem igazolja az ESP8266 Wi-Fi/API/RF viselkedését.
+- Telepítés és visszaállítás: `UPDATE_v0.2.0.9_HU.md`. A név-/OTA-javítások és az eredeti Alecto-publikálás megmaradnak.
+
 ## v0.2.0.8
 
 - Kérésre visszaállítva az Alecto V1 eredeti Plugin 030 feldolgozása. A pluginforrás bájtról bájtra változatlan; saját kerethossz-, checksum-, tartomány- és ismétlésvizsgálata megmarad.

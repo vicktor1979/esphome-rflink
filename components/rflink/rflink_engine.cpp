@@ -42,6 +42,8 @@ bool started = false, finished = false, overflow = false;
 uint32_t plugin_enabled_mask[8]{};  // 256 plugin IDs, 32 bytes RAM.
 
 uint32_t ev1527_near_frame_count = 0;
+uint32_t alecto_exact74_frame_count = 0;
+uint32_t alecto_accepted_frame_count = 0;
 uint32_t ev1527_exact50_frame_count = 0;
 uint32_t ev1527_accepted_frame_count = 0;
 uint8_t ev1527_last_near_pulse_count = 0;
@@ -230,6 +232,8 @@ void reset(bool enable_all_compiled) {
   QRFUDebug = false;
   reset_repeat_history();
   ev1527_near_frame_count = 0;
+  alecto_exact74_frame_count = 0;
+  alecto_accepted_frame_count = 0;
   ev1527_exact50_frame_count = 0;
   ev1527_accepted_frame_count = 0;
   ev1527_last_near_pulse_count = 0;
@@ -239,6 +243,8 @@ void reset(bool enable_all_compiled) {
 size_t plugin_count() { return RFLINK_TOTAL_PLUGINS; }
 const char *plugin_profile() { return RFLINK_PLUGIN_PROFILE; }
 uint32_t get_ev1527_near_frame_count() { return ev1527_near_frame_count; }
+uint32_t get_alecto_exact74_frame_count() { return alecto_exact74_frame_count; }
+uint32_t get_alecto_accepted_frame_count() { return alecto_accepted_frame_count; }
 uint32_t get_ev1527_exact50_frame_count() { return ev1527_exact50_frame_count; }
 uint32_t get_ev1527_accepted_frame_count() { return ev1527_accepted_frame_count; }
 uint8_t get_ev1527_last_near_pulse_count() { return ev1527_last_near_pulse_count; }
@@ -415,6 +421,7 @@ bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObserva
     // is exactly 50 pulses; 40..60 is intentionally only a broad observation
     // band so a future log can reveal edge-loss/glitch damage without enabling
     // the very noisy Plugin_254 debug stream.
+    if (plugin_id == 30U && RawSignal.Number == 74) ++alecto_exact74_frame_count;
     if (plugin_id == 61U) {
       if (RawSignal.Number >= 40 && RawSignal.Number <= 60) {
         ++ev1527_near_frame_count;
@@ -427,6 +434,7 @@ bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObserva
     // active-list index, preserving legacy repeat/hash behaviour.
     SignalHash = static_cast<byte>(index);
     if (RX_PLUGINS[index].decode(0, nullptr)) {
+      if (plugin_id == 30U) ++alecto_accepted_frame_count;
       // Plugin_061 validates the bits BEFORE its duplicate check. Both its new
       // frame path and its duplicate path return with SignalCRC == bitstream.
       // Do not reset CRC/timers, re-run the plugin, or bypass its legacy filter.

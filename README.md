@@ -195,7 +195,7 @@ A `capture_enabled` és `high_frequency` **a saját rxgate2 komponens opciói**.
 
 A korábbi forrás ESP8266-os alapkapcsolásában a DATA bemenet D1/GPIO5 volt, és külön D5/GPIO14-es vevőengedélyezés is szerepelt. A most működő konfigurációba emiatt **nem kell utólag találomra tápvezérlő kapcsolót betenni**. Másik hardverre telepítésnél a tényleges tápot, adatvezetéket, engedélyezést és jelszinteket külön ellenőrizni kell.
 
-A bevált `high_frequency: false` mellett az éleket továbbra is a GPIO-megszakítás gyűjti; csak a vevő saját folyamatosan gyorsított főciklus-kérése nincs engedélyezve. A főciklus ritkább kiolvasása nagy forgalomnál túlcsordulást okozhat, ezért az `overflow_reports` és a tényleges vétel együtt figyelendő.
+Az alapértelmezett `capture_mode: interrupt` és `high_frequency: false` mellett az éleket továbbra is a GPIO-megszakítás gyűjti; csak a vevő saját folyamatosan gyorsított főciklus-kérése nincs engedélyezve. A főciklus ritkább kiolvasása nagy forgalomnál túlcsordulást okozhat, ezért az `overflow_reports` és a tényleges vétel együtt figyelendő.
 
 Az `1200b` az örökölt konfigurációs jelölés: ebben az ESP8266-os megvalósításban 1200 darab 32 bites időzítési elem tárolására kér helyet, vagyis körülbelül **4800 bájt** fő ring buffert. Erre a hosszabb támogatott impulzussorok miatt van szükség.
 
@@ -723,15 +723,17 @@ Sikeres feltöltés után az 1–2 perces megfigyelés gyakorlati első próba, 
 
 ### Alecto V1: látszó RF jel, de nincs stabil dekódolás
 
-A v0.2.0.8 az eredeti, módosítatlan `Plugin_030.c` feldolgozását használja. Az egyedi Alecto-zajszűrés, impulzus- és bithelyreállítás, ismétlésekből való összeállítás, többmintás betanulás, hőmérséklet-simítás és ötperces publikálási korlát kikerült. A plugin saját kerethossz-, ellenőrzőösszeg-, tartomány- és ismétlésvizsgálata megmarad. Minden általa kiadott üzenet közvetlenül továbbjut az `on_message` kezelőkhöz.
+A v0.2.0.8-tól az eredeti, módosítatlan `Plugin_030.c` feldolgozását használja. Az egyedi Alecto-zajszűrés, impulzus- és bithelyreállítás, ismétlésekből való összeállítás, többmintás betanulás, hőmérséklet-simítás és ötperces publikálási korlát kikerült. A plugin saját kerethossz-, ellenőrzőösszeg-, tartomány- és ismétlésvizsgálata megmarad. Minden általa kiadott üzenet közvetlenül továbbjut az `on_message` kezelőkhöz.
 
 A külön `packages/rflink-alecto-006c.yaml` csomag a nyers pluginüzenetből azonnal frissíti a hőmérsékletet és az elemállapotot. Az első három hőmérséklet-adó teljes RF ID-jét érkezési sorrendben rendeli a meglévő három kijelzési helyhez, újraindulásig. A korábbi hozzáadott `SLOT`, `CHANNEL`, `RFBASE` mezők már nem részei az RF-üzenetnek; a csatorna-kijelzés `Nincs adat`. Részletek: `UPDATE_v0.2.0.8_HU.md`. A visszaállítás rádiós vételi sikert önmagában nem igazol.
+
+A v0.2.0.9 külön választható `remote_receiver.capture_mode: rflink_polling` vételi módot ad az eredeti RFLink-5.6wj GPIO-lekérdezése alapján. Ez a jel mérését cseréli, nem a protokollok dekódolását. Az alapértelmezés továbbra is `interrupt`. A polling módhoz `filter: 100us`, `idle: 5ms` és legalább `292b` puffer szükséges; a megszokott `1200b` megfelelő. Aktív vételkor a polling saját gyors főciklust kér a `high_frequency: false` mellett is; GPIO-megszakítást nem telepít. Legfeljebb 25 ms keresés és 200 ms keretmérés után visszatér, majd ugyanazt a dekódoló- és callback-útvonalat használja. Az ilyen blokkolás késleltetheti az API/főciklus kiszolgálását; ezért ez **hardveren ellenőrzendő összehasonlító próbaverzió**, nem igazolt vételi javítás. Részletek és az EV/Alecto próba menete: `UPDATE_v0.2.0.9_HU.md`.
 
 
 ### Elvárt verzió- és állapotjelzések
 
 ```text
-RFLink RX compatibility bridge v0.2.0.8 (original Plugin 030; no Alecto recovery or value gate)
+RFLink RX compatibility bridge v0.2.0.9 (original Plugin 030; no Alecto recovery or value gate)
 RX plugins compiled: 48
 Remote Receiver rxgate2 (ESP8266 / based on 2026.9.0)
 High frequency configured: NO

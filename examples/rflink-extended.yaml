@@ -1,5 +1,5 @@
 # RFLink ESPHome – extended configuration example.
-# Configuration: v0.2.0.8; ESPHome >= 2026.9.0.
+# Configuration: v0.2.0.9; ESPHome >= 2026.9.0.
 # Sources track main so a manual GitHub upload needs no release tag.
 #
 # ESP8266 / NodeMCU v2 example using rxgate2.
@@ -63,6 +63,8 @@ ota:
 
 remote_receiver:
   id: rf_receiver
+  # Optional RFLink-style polling comparison: see UPDATE_v0.2.0.9_HU.md.
+  capture_mode: interrupt
   capture_enabled: false  # stored BEFORE setup: no RX interrupt while connecting
   high_frequency: false  # CUSTOM rxgate2 option; IRQ capture stays active after API connects
   pin:

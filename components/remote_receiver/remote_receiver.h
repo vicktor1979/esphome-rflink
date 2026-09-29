@@ -39,13 +39,18 @@ class RemoteReceiverComponent final : public remote_base::RemoteReceiverBase, pu
   void set_buffer_size(uint32_t value) { this->buffer_size_ = value; }
   void set_filter_us(uint32_t value) { this->filter_us_ = value; }
   void set_idle_us(uint32_t value) { this->idle_us_ = value; }
+  // Setup-time selection. IRQ remains the default for existing YAML.
+  void set_rflink_polling(bool enabled) { if (!this->capture_ready_) this->rflink_polling_ = enabled; }
+  const char *get_capture_mode_name() const { return this->rflink_polling_ ? "rflink_polling" : "interrupt"; }
+  uint32_t get_polling_short_rejects() const { return this->polling_short_rejects_; }
+  uint32_t get_polling_limit_rejects() const { return this->polling_limit_rejects_; }
   // Main-loop/setup context only. Before setup this stores the initial setting.
   void set_capture_enabled(bool enabled);
   bool is_capture_enabled() const { return this->capture_active_; }
   // Main-loop/setup context only. Does not detach IRQ or reset pulse buffers.
   void set_high_frequency(bool enabled);
   bool is_high_frequency_requested() const {
-    return this->capture_active_ && (this->high_frequency_ || this->backlog_boost_active_);
+    return this->capture_active_ && (this->rflink_polling_ || this->high_frequency_ || this->backlog_boost_active_);
   }
   uint32_t get_loop_calls() const { return this->loop_calls_; }
   // Counts overflow flags observed by loop(), not lost edges or lost packets.
@@ -58,6 +63,7 @@ class RemoteReceiverComponent final : public remote_base::RemoteReceiverBase, pu
   bool is_backlog_boost_active() const { return this->backlog_boost_active_; }
 
  protected:
+  void capture_polling_();
   void reset_capture_state_();  // call ONLY while our pin interrupt is detached
   void recover_capture_(const char *reason, bool log_warning = true);
   uint32_t completed_backlog_entries_() const;
@@ -87,5 +93,8 @@ class RemoteReceiverComponent final : public remote_base::RemoteReceiverBase, pu
   bool capture_ready_{false};
   bool capture_requested_{true};
   bool capture_active_{false};
+  bool rflink_polling_{false};
+  uint32_t polling_short_rejects_{0};
+  uint32_t polling_limit_rejects_{0};
 };
 }  // namespace esphome::remote_receiver

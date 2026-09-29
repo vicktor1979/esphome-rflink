@@ -42,7 +42,7 @@ void RFLinkComponent::setup() {
     this->ready_timing_ = false;
     this->auto_running_ = false;
     if (this->build_text_sensor_ != nullptr) {
-      std::string build{"v0.2.0.8 · "};
+      std::string build{"v0.2.0.9 · "};
       build += ::rflink_legacy::plugin_profile();
       build += " · ";
       build += std::to_string(static_cast<unsigned>(::rflink_legacy::plugin_count()));
@@ -104,7 +104,7 @@ void RFLinkComponent::loop() {
 }
 
 void RFLinkComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.2.0.8 (original Plugin 030; no Alecto recovery or value gate):");
+  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.2.0.9 (original Plugin 030; no Alecto recovery or value gate):");
   ESP_LOGCONFIG(TAG, "  Plugin profile: %s", rflink_legacy::plugin_profile());
   ESP_LOGCONFIG(TAG, "  RX plugins compiled: %u", static_cast<unsigned>(::rflink_legacy::plugin_count()));
   ESP_LOGCONFIG(TAG, "  RX plugins enabled: %u", static_cast<unsigned>(::rflink_legacy::enabled_plugin_count()));
@@ -226,7 +226,7 @@ void RFLinkComponent::update_diagnostics_(uint32_t now, bool network_ready, bool
   if (this->receiver_ == nullptr) return;
 #ifdef USE_ESP8266
   ESP_LOGI("rflink.diag",
-           "AUTO=%s; CAPTURE=%s; DECODE=%s; api=%s; net=%s; up=%lu s; heap=%u; maxblk=%u; frag=%u%%; frames=%lu; decoded=%lu; calls=%lu; skipped=%lu; decmax=%lu; cbmax=%lu; observed=%lu; framecb=%lu; irq=%lu; fast=%s; loops=%lu; ovf=%lu; rec=%lu; boosts=%lu; backlog=%lu; hist=%lu",
+           "AUTO=%s; CAPTURE=%s; DECODE=%s; api=%s; net=%s; up=%lu s; heap=%u; maxblk=%u; frag=%u%%; frames=%lu; decoded=%lu; calls=%lu; skipped=%lu; decmax=%lu; cbmax=%lu; observed=%lu; framecb=%lu; edges=%lu; fast=%s; loops=%lu; ovf=%lu; rec=%lu; boosts=%lu; backlog=%lu; hist=%lu",
            this->monitoring_enabled_ ? "ON" : "OFF",
            this->receiver_->is_capture_enabled() ? "ON" : "OFF", this->decode_enabled_ ? "ON" : "OFF",
            api_ready ? "YES" : "NO", network_ready ? "ON" : "OFF",
@@ -259,8 +259,14 @@ void RFLinkComponent::update_diagnostics_(uint32_t now, bool network_ready, bool
            static_cast<unsigned long>(this->receiver_->get_max_completed_backlog()),
            static_cast<unsigned long>(this->repeat_history_resets_));
 #endif
+  ESP_LOGI("rflink.capture", "mode=%s; poll_short=%lu; poll_limit=%lu",
+           this->receiver_->get_capture_mode_name(),
+           static_cast<unsigned long>(this->receiver_->get_polling_short_rejects()),
+           static_cast<unsigned long>(this->receiver_->get_polling_limit_rejects()));
   ESP_LOGI("rflink.rfdiag",
-           "ALECTO=original; EV near=%lu exact50=%lu ok=%lu last=%u",
+           "ALECTO=original exact74=%lu ok=%lu; EV near=%lu exact50=%lu ok=%lu last=%u",
+           static_cast<unsigned long>(::rflink_legacy::get_alecto_exact74_frame_count()),
+           static_cast<unsigned long>(::rflink_legacy::get_alecto_accepted_frame_count()),
            static_cast<unsigned long>(::rflink_legacy::get_ev1527_near_frame_count()),
            static_cast<unsigned long>(::rflink_legacy::get_ev1527_exact50_frame_count()),
            static_cast<unsigned long>(::rflink_legacy::get_ev1527_accepted_frame_count()),
