@@ -160,6 +160,10 @@ class RFLinkComponent : public Component, public remote_base::RemoteReceiverList
   uint32_t alecto_gate_published_{0};
   uint32_t alecto_gate_dropped_{0};
   uint32_t alecto_gate_learned_{0};
+  uint32_t alecto_gate_received_{0};
+  uint16_t alecto_gate_last_id_{0};
+  uint8_t alecto_gate_samples_{0};
+  const char *alecto_gate_reason_{"waiting"};
 
   remote_receiver::RemoteReceiverComponent *receiver_{nullptr};
   binary_sensor::BinarySensor *decode_active_sensor_{nullptr};

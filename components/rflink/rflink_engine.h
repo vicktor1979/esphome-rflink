@@ -19,6 +19,7 @@ struct FrameObservation {
 // Home Assistant text-sensor state. The exact pulse count remains separate.
 struct UnsupportedObservation {
   bool valid{false};
+  bool alecto_candidate{false};  // bounded Alecto waveform gate passed
   uint16_t pulse_count{0};
   bool truncated{false};
   std::string summary;
@@ -37,6 +38,23 @@ uint8_t get_alecto_last_frames();
 uint8_t get_alecto_last_data_strong();
 uint8_t get_alecto_last_checksum_strong();
 uint8_t get_alecto_last_payload_weak();
+
+// Last candidate details plus cumulative counts. No sensor values are exposed
+// here; checksum-valid messages still pass the component's reliability gate.
+struct AlectoRecoveryDiagnostics {
+  uint32_t long_blocks{0};
+  uint32_t split_boundaries{0};
+  uint32_t rows{0};
+  uint32_t clean_rows{0};
+  uint32_t rejected_rows{0};
+  uint32_t budget_stops{0};
+  uint16_t raw_pulses{0};
+  uint16_t normalized_pulses{0};
+  uint16_t alignment_cost{0};
+  uint8_t known_bits{0};
+  const char *reason{"waiting"};
+};
+const AlectoRecoveryDiagnostics &get_alecto_recovery_diagnostics();
 
 // EV1527 receive-path diagnostics. near counts raw 40..60-pulse frames seen
 // immediately before Plugin_061; exact50 is the protocol's required pulse

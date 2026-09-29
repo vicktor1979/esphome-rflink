@@ -2,6 +2,18 @@
 
 Az RFLink ESPHome komponens fontosabb verziói és változásai.
 
+## v0.2.0.6
+
+- Alecto: az előszűrés már a teljes, a legacy motor által elfogadott blokkot kezeli, legfeljebb 291 impulzusig. A 120 impulzusos sorhatár csak a rövid zajimpulzusok összevonása és az ismétlések szétválasztása után érvényesül.
+- A legalább 6500 µs hosszú, ténylegesen megfigyelt vagy helyreállított szüneteknél külön, egymást nem átfedő Alecto-sorokat dolgoz fel. Bizonytalan határnál nem darabol önkényesen.
+- A teljesen helyreállított, ellenőrzőösszeg-helyes sorok gyors úton kerülnek az eredeti Plugin 030 elé; a további sérült sorokat a meglévő, ismétléseken alapuló bitellenőrzés kezeli.
+- Egy blokkból legfeljebb négy sort vizsgál. Újabb sort csak a blokkszintű 8 ms-os időkereten belül kezd el; egy már megkezdett illesztést nem szakít félbe. Az EV1527 normál dekódolása továbbra is az Alecto-helyreállítás előtt történik.
+- Új `rflink.alecto.rx` diagnosztika, valamint a betanulási/értékellenőrzési kapu `received`, `samples`, `last_id`, `reason` adatai. A megerősítésre váró mérések °C-ban megjelennek a naplóban, a HA-ba csak az elfogadott érték jut el.
+- Plugin 254 mellett a nem pontosan 74 impulzusos Alecto-jelöltek teljes nyers blokkja is naplózható; legfeljebb egy blokk öt másodpercenként, számozott részekben.
+- A hárommintás tanulás, az ötperces hőmérséklet-közzétételi korlát, a nagy ugrások ellenőrzése, a közös vevőbeállítások és az eredeti RFLink-pluginok változatlanok.
+- Új host regressziók: hosszú/sérült/összefolyó Alecto-jelek, hibás checksum, zaj, időkeret, plugin-kikapcsolás, EV1527 és a teljes kapun át történő publikálás. A meglévő teszt-entitáshelyettesítők kiegészítése a már használt ESPHome-metódusokkal.
+- Részletes telepítés és a mérés korlátai: `UPDATE_v0.2.0.6_HU.md`.
+
 ## v0.2.0.1
 
 - Egyszerűsített runtime plugin konfiguráció: `plugin_switches: [30, 61, 254]`; nincs kézi `plugin_id`, kapcsoló `id`, név vagy külön restore beállítás.

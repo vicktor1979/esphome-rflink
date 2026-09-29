@@ -1,9 +1,7 @@
 // Compatibility implementation; original plugin and utility bytes are unmodified.
-// v0.2.0.4: keep EV1527 on the fast normal decode path while making Alecto
-// recovery more tolerant of receiver glitches. Alecto-only pre-collapse now
-// removes sub-220 us edge spikes, and payload consensus may use an actually
-// observed 2:1-or-better majority while the rolling-code/ID bits still require
-// strong agreement. Original RFLink plugin sources stay byte-for-byte unchanged.
+// v0.2.0.6: normalize the complete bounded capture before the row-size gate.
+// Recovered long SPACE intervals separate non-overlapping Alecto repeats.
+// Normal decoders, including EV1527, still run before this fallback.
 #include "rflink_engine.h"
 #include <Arduino.h>
 #include <algorithm>
@@ -58,6 +56,10 @@ struct AlectoRepeatAccumulator {
   uint8_t one_votes[36]{};
 };
 AlectoRepeatAccumulator alecto_repeat{};
+AlectoRecoveryDiagnostics alecto_rx_diag{};
+// Shared with the already non-reentrant legacy engine. Static storage keeps
+// the ESP8266 stack bounded and avoids per-frame heap allocations.
+uint32_t alecto_capture[RAW_BUFFER_SIZE]{};
 uint32_t alecto_soft_frame_count = 0;
 uint32_t alecto_reconstructed_count = 0;
 uint8_t alecto_last_frames = 0;
@@ -166,6 +168,9 @@ constexpr uint16_t ALECTO_ZERO_NOMINAL_US = 1950;
 constexpr uint16_t ALECTO_ONE_NOMINAL_US = 4400;
 constexpr uint16_t ALECTO_PRECOLLAPSE_GLITCH_US = 220;
 constexpr uint16_t ALECTO_MAX_ALIGNMENT_COST = 2600;
+constexpr uint32_t ALECTO_ROW_GAP_US = 6500;  // above the longest accepted data space (6200)
+constexpr uint32_t ALECTO_BLOCK_BUDGET_US = 8000;  // checked between rows; one alignment may exceed this
+constexpr uint8_t ALECTO_MAX_ROWS_PER_CAPTURE = 4;
 
 // v0.1.9.7 alignment operations. RF glitches normally arrive as an extra edge
 // pair (three observed intervals are really one RF interval), while missed edge
@@ -325,13 +330,14 @@ bool alecto_bits_valid(const uint8_t bits[36]) {
   return subtype == 0x03 || subtype == 0x01 || subtype == 0x07;
 }
 
-bool looks_like_alecto_waveform(const uint32_t *work, uint8_t count, uint64_t total_us) {
-  if (count < 55U || count > ALECTO_MAX_OBSERVED_PULSES) return false;
-  if (total_us < 70000U || total_us > 185000U) return false;
-  uint8_t short_like = 0;
-  uint8_t data_like = 0;
-  uint8_t recognized = 0;
-  for (uint8_t i = 0; i < count; ++i) {
+bool looks_like_alecto_waveform(const uint32_t *work, size_t count, uint64_t total_us,
+                               bool whole_capture = false) {
+  if (count < 55U || count > (whole_capture ? RAW_BUFFER_SIZE - 1U : ALECTO_MAX_OBSERVED_PULSES)) return false;
+  if (total_us < 70000U || total_us > (whole_capture ? 740000U : 185000U)) return false;
+  size_t short_like = 0;
+  size_t data_like = 0;
+  size_t recognized = 0;
+  for (size_t i = 0; i < count; ++i) {
     const uint32_t us = work[i];
     if (us >= 220U && us <= 1050U) {
       ++short_like;
@@ -344,7 +350,7 @@ bool looks_like_alecto_waveform(const uint32_t *work, uint8_t count, uint64_t to
   // Cheap gate before the dynamic program. The real noisy captures still score
   // around 80..90%, while random 433 MHz traffic normally does not.
   return short_like >= 12U && data_like >= 12U &&
-         static_cast<uint16_t>(recognized) * 100U >= static_cast<uint16_t>(count) * 58U;
+         recognized * 100U >= count * 58U;
 }
 
 // Extract trustworthy bit observations from one damaged Alecto repeat. The
@@ -353,54 +359,14 @@ bool looks_like_alecto_waveform(const uint32_t *work, uint8_t count, uint64_t to
 //   1 observed -> 3 expected : an edge pair was missed and intervals merged
 // The routine never fabricates a complete packet from one row. It returns only
 // confident bit observations; several repeats must agree before checksum test.
-bool extract_alecto_soft_bits(const std::vector<int32_t> &timings, uint8_t frame_bits[36],
-                              uint8_t frame_known[36], uint8_t &known_count, uint16_t &alignment_cost) {
+bool extract_alecto_soft_bits(const uint32_t *work, uint8_t signal_count, uint64_t total_us,
+                              uint8_t frame_bits[36], uint8_t frame_known[36],
+                              uint8_t &known_count, uint16_t &alignment_cost) {
   known_count = 0;
   alignment_cost = ALECTO_ALIGN_INF;
   std::memset(frame_bits, 0, 36);
   std::memset(frame_known, 0, 36);
-  if (timings.empty()) return false;
-
-  size_t first = 0, end = timings.size();
-  while (first < end && timings[first] < 0) ++first;
-  if (first == end) return false;
-  if (end > first && timings[end - 1] <= -SIGNAL_END_TIMEOUT_US) --end;
-  if (end == first) return false;
-  const bool append_timeout = timings[end - 1] > 0;
-  size_t signal_count = end - first;
-  if (signal_count > ALECTO_MAX_OBSERVED_PULSES) return false;
-
-  uint32_t work[ALECTO_MAX_OBSERVED_PULSES]{};
-  uint64_t total_us = 0;
-  for (size_t i = 0; i < signal_count; ++i) {
-    const int64_t signed_value = timings[first + i];
-    const uint64_t us64 = signed_value < 0 ? -signed_value : signed_value;
-    if (us64 == 0 || us64 > 20000U) return false;
-    work[i] = static_cast<uint32_t>(us64);
-    total_us += us64;
-  }
-  (void) append_timeout;
-
-  // Alecto-only deglitching happens before the waveform gate. The ESP8266
-  // receiver can legitimately be left at 100 us for EV1527 while narrow
-  // 100..220 us opposite-level excursions inside an Alecto interval are merged
-  // back into the physical interval they split.
-  while (signal_count >= 3U) {
-    size_t best = signal_count;
-    uint32_t best_width = ALECTO_PRECOLLAPSE_GLITCH_US;
-    for (size_t i = 1; i + 1 < signal_count; ++i) {
-      if (work[i] < best_width) {
-        best = i;
-        best_width = work[i];
-      }
-    }
-    if (best == signal_count) break;
-    work[best - 1] = work[best - 1] + work[best] + work[best + 1];
-    for (size_t i = best; i + 2 < signal_count; ++i) work[i] = work[i + 2];
-    signal_count -= 2U;
-  }
-  if (signal_count < 45U || signal_count > ALECTO_MAX_OBSERVED_PULSES) return false;
-  if (!looks_like_alecto_waveform(work, static_cast<uint8_t>(signal_count), total_us)) return false;
+  if (!looks_like_alecto_waveform(work, signal_count, total_us)) return false;
 
   clear_alecto_pred();
   for (uint8_t slot = 0; slot < 4U; ++slot) {
@@ -523,17 +489,21 @@ bool extract_alecto_soft_bits(const std::vector<int32_t> &timings, uint8_t frame
   return known_count >= 22U;
 }
 
-bool prepare_alecto_repeat_recovery(const std::vector<int32_t> &timings) {
-  if (!mask_get(30)) return false;
+void prepare_alecto_canonical_row(const uint8_t bits[36]) {
+  RawSignal = RawSignalStruct{};
+  RawSignal.Multiply = RAWSIGNAL_SAMPLE_RATE;
+  RawSignal.Time = millis();
+  RawSignal.Number = 74;
+  RawSignal.Pulses[1] = static_cast<byte>(480 / RAWSIGNAL_SAMPLE_RATE);
+  for (uint8_t bit = 0; bit < 36; ++bit) {
+    RawSignal.Pulses[2 + bit * 2] = static_cast<byte>((bits[bit] ? 4200 : 1950) / RAWSIGNAL_SAMPLE_RATE);
+    RawSignal.Pulses[3 + bit * 2] = static_cast<byte>(480 / RAWSIGNAL_SAMPLE_RATE);
+  }
+  RawSignal.Pulses[74] = static_cast<byte>(SIGNAL_END_TIMEOUT_US / RAWSIGNAL_SAMPLE_RATE);
+  ++alecto_reconstructed_count;
+}
 
-  uint8_t frame_bits[36]{};
-  uint8_t frame_known[36]{};
-  uint8_t known_count = 0;
-  uint16_t alignment_cost = ALECTO_ALIGN_INF;
-  if (!extract_alecto_soft_bits(timings, frame_bits, frame_known, known_count, alignment_cost)) return false;
-  ++alecto_soft_frame_count;
-  (void) alignment_cost;
-
+bool accumulate_alecto_repeat(const uint8_t frame_bits[36], const uint8_t frame_known[36]) {
   const uint32_t now = millis();
   if (alecto_repeat.last_ms == 0 || static_cast<uint32_t>(now - alecto_repeat.last_ms) > ALECTO_REPEAT_WINDOW_MS)
     reset_alecto_repeat();
@@ -616,20 +586,136 @@ bool prepare_alecto_repeat_recovery(const std::vector<int32_t> &timings) {
   if (valid_solutions != 1U) return false;
   std::memcpy(majority, valid_candidate, sizeof(majority));
 
-  // Recreate an ideal 74-pulse row. The caller immediately hands this to the
-  // untouched Plugin_030, whose checksum/range/repeat logic remains final.
-  RawSignal = RawSignalStruct{};
-  RawSignal.Multiply = RAWSIGNAL_SAMPLE_RATE;
-  RawSignal.Time = now;
-  RawSignal.Number = 74;
-  RawSignal.Pulses[1] = static_cast<byte>(480 / RAWSIGNAL_SAMPLE_RATE);
-  for (uint8_t bit = 0; bit < 36; ++bit) {
-    RawSignal.Pulses[2 + bit * 2] = static_cast<byte>((majority[bit] ? 4200 : 1950) / RAWSIGNAL_SAMPLE_RATE);
-    RawSignal.Pulses[3 + bit * 2] = static_cast<byte>(480 / RAWSIGNAL_SAMPLE_RATE);
-  }
-  RawSignal.Pulses[74] = static_cast<byte>(SIGNAL_END_TIMEOUT_US / RAWSIGNAL_SAMPLE_RATE);
-  ++alecto_reconstructed_count;
+  // The original Plugin_030 still performs final checksum/range/repeat checks.
+  prepare_alecto_canonical_row(majority);
   return true;
+}
+
+bool prepare_alecto_repeat_recovery(const std::vector<int32_t> &timings, bool &candidate) {
+  candidate = false;
+  if (!mask_get(30) || timings.empty()) return false;
+  const uint32_t started_us = micros();
+  size_t first = 0, end = timings.size();
+  while (first < end && timings[first] < 0) ++first;
+  if (end > first && timings[end - 1] <= -SIGNAL_END_TIMEOUT_US) --end;
+  size_t count = end - first;
+  if (count < 55U || count > RAW_BUFFER_SIZE - 1U) return false;
+  const size_t raw_count = count + (timings[end - 1] > 0 ? 1U : 0U);
+  uint64_t total_us = 0;
+  for (size_t i = 0; i < count; ++i) {
+    const int64_t value = timings[first + i];
+    if ((value > 0) != ((i & 1U) == 0U)) return false;
+    const uint64_t width = value < 0 ? -value : value;
+    if (width == 0 || width > 20000U) return false;
+    alecto_capture[i] = static_cast<uint32_t>(width);
+    total_us += width;
+  }
+  if (total_us < 70000U || total_us > 740000U) return false;
+
+  // Join narrow opposite-level excursions throughout the WHOLE capture. A
+  // damaged 74-pulse row may exceed 120 raw pulses; noise may also split an
+  // inter-repeat idle space so the receiver delivers several rows together.
+  // Removing two edges preserves mark/space polarity and elapsed time.
+  while (count >= 3U) {
+    size_t best = count;
+    uint32_t best_width = ALECTO_PRECOLLAPSE_GLITCH_US;
+    for (size_t i = 1; i + 1U < count; ++i) {
+      if (alecto_capture[i] < best_width) {
+        best = i;
+        best_width = alecto_capture[i];
+      }
+    }
+    if (best == count) break;
+    alecto_capture[best - 1U] += alecto_capture[best] + alecto_capture[best + 1U];
+    for (size_t i = best; i + 2U < count; ++i) alecto_capture[i] = alecto_capture[i + 2U];
+    count -= 2U;
+  }
+  // Apply the waveform gate AFTER deglitching: otherwise the very spikes we
+  // intend to remove could make a legitimate long capture fail this gate.
+  if (!looks_like_alecto_waveform(alecto_capture, count, total_us, true)) return false;
+  candidate = true;
+  alecto_rx_diag.raw_pulses = static_cast<uint16_t>(raw_count);
+  alecto_rx_diag.normalized_pulses = static_cast<uint16_t>(count);
+  alecto_rx_diag.known_bits = 0;
+  alecto_rx_diag.alignment_cost = 0;
+  if (raw_count > ALECTO_MAX_OBSERVED_PULSES) ++alecto_rx_diag.long_blocks;
+  alecto_rx_diag.reason = "no_complete_row";
+
+  uint8_t attempts = 0;
+  size_t begin = 0;
+  while (begin < count) {
+    size_t row_end = begin;
+    uint64_t row_us = 0;
+    // Split only at an observed/reconstructed long SPACE, never at an
+    // arbitrary pulse count or an invented checksum-compatible boundary.
+    while (row_end < count && !((row_end & 1U) != 0U && alecto_capture[row_end] >= ALECTO_ROW_GAP_US)) {
+      row_us += alecto_capture[row_end++];
+    }
+    const bool boundary = row_end < count;
+    if (boundary) ++alecto_rx_diag.split_boundaries;
+    const size_t row_count = row_end - begin;
+    if (row_count >= 55U) {
+      if (attempts >= ALECTO_MAX_ROWS_PER_CAPTURE ||
+          (attempts != 0U && static_cast<uint32_t>(micros() - started_us) >= ALECTO_BLOCK_BUDGET_US)) {
+        ++alecto_rx_diag.budget_stops;
+        alecto_rx_diag.reason = "budget";
+        break;
+      }
+      ++attempts;
+      ++alecto_rx_diag.rows;
+      if (row_count > ALECTO_MAX_OBSERVED_PULSES) {
+        ++alecto_rx_diag.rejected_rows;
+        alecto_rx_diag.reason = "unsplit_long";
+      } else if (!looks_like_alecto_waveform(alecto_capture + begin, row_count, row_us)) {
+        ++alecto_rx_diag.rejected_rows;
+        alecto_rx_diag.reason = "waveform";
+      } else {
+        uint8_t bits[36]{}, known[36]{}, known_count = 0;
+        uint16_t cost = 0;
+        // A fully restored row needs no dynamic alignment or guessed bits.
+        // Its checksum must already be right, just as on the normal path.
+        bool clean = row_count == ALECTO_EXPECTED_SIGNAL_PULSES;
+        for (size_t i = 0; clean && i < row_count; ++i) {
+          const uint32_t us = alecto_capture[begin + i];
+          if ((i & 1U) == 0U) {
+            clean = us >= 220U && us <= 672U;
+          } else {
+            const bool zero = us >= 1100U && us <= 2560U;
+            const bool one = us >= 3000U && us <= 6200U;
+            clean = zero || one;
+            bits[i / 2U] = one ? 1U : 0U;
+          }
+        }
+        if (clean && alecto_bits_valid(bits)) {
+          ++alecto_rx_diag.clean_rows;
+          alecto_rx_diag.known_bits = 36;
+          alecto_rx_diag.alignment_cost = 0;
+          alecto_rx_diag.reason = "clean_restored";
+          prepare_alecto_canonical_row(bits);
+          return true;
+        }
+        if (extract_alecto_soft_bits(alecto_capture + begin, static_cast<uint8_t>(row_count), row_us,
+                                     bits, known, known_count, cost)) {
+          ++alecto_soft_frame_count;
+          alecto_rx_diag.known_bits = known_count;
+          alecto_rx_diag.alignment_cost = cost;
+          alecto_rx_diag.reason = "consensus";
+          if (accumulate_alecto_repeat(bits, known)) {
+            alecto_rx_diag.reason = "reconstructed";
+            return true;
+          }
+        } else {
+          ++alecto_rx_diag.rejected_rows;
+          alecto_rx_diag.known_bits = known_count;
+          alecto_rx_diag.alignment_cost = cost;
+          alecto_rx_diag.reason = "alignment";
+        }
+      }
+    }
+    if (!boundary) break;
+    begin = row_end + 1U;  // next mark; rows never overlap or vote twice
+  }
+  return false;
 }
 
 }  // namespace
@@ -730,6 +816,7 @@ void reset(bool enable_all_compiled) {
   QRFUDebug = false;
   reset_repeat_history();
   reset_alecto_repeat();
+  alecto_rx_diag = AlectoRecoveryDiagnostics{};
   alecto_soft_frame_count = 0;
   alecto_reconstructed_count = 0;
   alecto_last_frames = 0;
@@ -745,6 +832,7 @@ void reset(bool enable_all_compiled) {
 }
 size_t plugin_count() { return RFLINK_TOTAL_PLUGINS; }
 const char *plugin_profile() { return RFLINK_PLUGIN_PROFILE; }
+const AlectoRecoveryDiagnostics &get_alecto_recovery_diagnostics() { return alecto_rx_diag; }
 uint32_t get_alecto_soft_frame_count() { return alecto_soft_frame_count; }
 uint32_t get_alecto_reconstructed_count() { return alecto_reconstructed_count; }
 uint8_t get_alecto_last_frames() { return alecto_last_frames; }
@@ -1131,9 +1219,10 @@ bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObserva
   // Recovery is a fallback, never a prerequisite for another protocol. Only
   // after every normal decoder (including EV1527) has rejected the frame do we
   // spend CPU on the soft Alecto alignment/consensus path.
+  bool alecto_candidate = false;
   if (!short_debug_only && alecto_index != LEGACY_PLUGIN_COUNT) {
     const RawSignalStruct original = RawSignal;
-    if (prepare_alecto_repeat_recovery(timings)) {
+    if (prepare_alecto_repeat_recovery(timings, alecto_candidate)) {
       clear_message();
       SignalHash = static_cast<byte>(alecto_index);
       if (RX_PLUGINS[alecto_index].decode(0, nullptr)) {
@@ -1155,6 +1244,7 @@ bool decode(const std::vector<int32_t> &timings, std::string &json, FrameObserva
     const int raw_count_before = RawSignal.Number;
     if (RX_PLUGINS[debug254_index].decode(0, nullptr)) {
       build_unsupported_summary(raw_count_before, unsupported);
+      if (unsupported != nullptr) unsupported->alecto_candidate = alecto_candidate;
       SignalHashPrevious = SignalHash;
       RepeatingTimer = millis() + SIGNAL_REPEAT_TIME_MS;
       if (finished && !overflow) json = output;
