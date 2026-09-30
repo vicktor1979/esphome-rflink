@@ -2,6 +2,17 @@
 
 Az RFLink ESPHome komponens fontosabb verziói és változásai.
 
+Verziózás: négy, egy számjegyes blokk (0–9). Példa: v0.2.0.9 → v0.2.1.0 → v0.2.1.1.
+
+## v0.2.1.0 — deklaratív RFLink numerikus szenzorok
+
+- Új `sensor: platform: rflink_sensor`: `rflink_id`, `protocol`, `rf_id`, `field` alapján külön HA-szenzor, csomag és script nélkül.
+- TEMP az alapértelmezett mező; negatív értékekkel, °C egységgel, temperature osztállyal és egy tizedessel. HUM és BARO metaadatok is automatikusak.
+- Pontos protokollnév és teljes RF ID; az ID kis-/nagybetűfüggetlen, a vezető nullák számítanak. Nincs betanítás és nem keverednek az adók.
+- Hiányzó vagy hibás mezőnél az utolsó érvényes állapot megmarad. Egyforma új mérések is publikálódnak, így az ESPHome szűrők használhatók.
+- Az új szenzor a meglévő üzenetmegfigyelőhöz kapcsolódik. TEMP/HUM nélküli EV-üzeneteket további JSON-feldolgozás nélkül átugorja. Vétel, pluginok és EV-gesztusok változatlanok.
+- Telepítés és példák: `UPDATE_v0.2.1.0_HU.md`.
+
 ## v0.2.0.9 — választható eredeti jellegű vétel, próbaverzió
 
 - A feltöltött RFLink-5.6wj `Plugin_030.c`, `Plugin_061.c` és `Plugin_001.c` forrása megegyezik a jelenlegi forrással; a fő különbség a GPIO polling és a megszakításos jelmérés.

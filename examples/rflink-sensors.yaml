@@ -1,0 +1,28 @@
+# Fragment: merge this sensor list into your existing ESPHome YAML.
+# Requires v0.2.1.0; add rflink_sensor to external_components.components.
+# Enable the matching RFLink plugin (Mebus: 040; Alecto V1: 030).
+sensor:
+  - platform: rflink_sensor
+    id: mebus_temp
+    name: "Mebus hőmérséklet"
+    rflink_id: rf_bridge
+    protocol: "Mebus"
+    rf_id: "e501"
+    field: TEMP
+
+  - platform: rflink_sensor
+    id: alecto_006c_temp
+    name: "Alecto 006C hőmérséklet"
+    rflink_id: rf_bridge
+    protocol: "Alecto V1"
+    rf_id: "006c"
+    field: TEMP
+
+  # Optional: only an actual HUM field can update this entity.
+  - platform: rflink_sensor
+    id: alecto_006c_humidity
+    name: "Alecto 006C páratartalom"
+    rflink_id: rf_bridge
+    protocol: "Alecto V1"
+    rf_id: "006c"
+    field: HUM

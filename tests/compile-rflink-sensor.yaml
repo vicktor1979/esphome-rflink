@@ -1,0 +1,55 @@
+esphome:
+  name: rflink-sensor-test
+esp8266:
+  board: nodemcuv2
+logger:
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [remote_receiver, rflink, rflink_remote, rflink_sensor]
+remote_receiver:
+  id: rf_receiver
+  pin: GPIO5
+  capture_mode: rflink_polling
+  filter: 100us
+  idle: 5ms
+  buffer_size: 1200b
+rflink:
+  id: rf_bridge
+  receiver_id: rf_receiver
+  rx_plugins: [30, 40, 61]
+  plugin_profile: extended
+  log_messages: false
+rflink_remote:
+  id: rf_remotes
+  rflink_id: rf_bridge
+event:
+  - platform: rflink_remote
+    name: Test button
+    remote_id: rf_remotes
+    protocol: EV1527
+    rf_id: "01fac2"
+    button: "08"
+    command: "ON"
+    mode: gestures
+    event_types: [single, hold_repeat]
+sensor:
+  - platform: rflink_sensor
+    id: mebus_temp
+    name: Mebus temperature
+    rflink_id: rf_bridge
+    protocol: Mebus
+    rf_id: "e501"
+    field: TEMP
+  - platform: rflink_sensor
+    name: Alecto temperature
+    rflink_id: rf_bridge
+    protocol: Alecto V1
+    rf_id: "006c"
+  - platform: rflink_sensor
+    name: Alecto humidity
+    rflink_id: rf_bridge
+    protocol: Alecto V1
+    rf_id: "006c"
+    field: HUM
