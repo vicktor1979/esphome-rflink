@@ -1,5 +1,5 @@
 # Fragment: merge this sensor list into your existing ESPHome YAML.
-# Requires v0.2.1.0; add rflink_sensor to external_components.components.
+# Requires v0.2.1.1; add rflink_sensor to external_components.components.
 # Enable the matching RFLink plugin (Mebus: 040; Alecto V1: 030).
 sensor:
   - platform: rflink_sensor

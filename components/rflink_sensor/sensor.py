@@ -32,7 +32,9 @@ def defaults(config):
         config.setdefault("unit_of_measurement", unit)
         config.setdefault("device_class", device_class)
         config.setdefault("accuracy_decimals", decimals)
-        config.setdefault("state_class", "measurement")
+        # This hook runs AFTER sensor_schema: defaults added here must already
+        # be validated, otherwise codegen emits a C++ string instead of an enum.
+        config.setdefault("state_class", sensor.validate_state_class("measurement"))
     return config
 
 

@@ -4,6 +4,14 @@ Az RFLink ESPHome komponens fontosabb verziói és változásai.
 
 Verziózás: négy, egy számjegyes blokk (0–9). Példa: v0.2.0.9 → v0.2.1.0 → v0.2.1.1.
 
+## v0.2.1.1 — szenzor state_class fordítási javítás
+
+- Az automatikus `measurement` érték a szenzorséma után lett beszúrva, ezért szövegként került a generált C++-ba. A javítás az ESPHome saját `validate_state_class` konverzióját használja; így valódi StateClass enum keletkezik.
+- Minden automatikus mezőmetaadatra érvényes: TEMP, HUM, BARO, WINCHL és WINTMP. A kézzel megadott state_class változatlan marad.
+- Új regresszióteszt valódi ESPHome 2026.9.0 kódgenerálással; az enumokat és a felhasználói felülbírálást ellenőrzi.
+- Vétel, EV-dekódolás, gesztuskezelés és mérésiérték-feldolgozás változatlan.
+- A csomag a v0.2.1.0 új szenzorplatformját is tartalmazza. Telepítés: `UPDATE_v0.2.1.1_HU.md`.
+
 ## v0.2.1.0 — deklaratív RFLink numerikus szenzorok
 
 - Új `sensor: platform: rflink_sensor`: `rflink_id`, `protocol`, `rf_id`, `field` alapján külön HA-szenzor, csomag és script nélkül.
