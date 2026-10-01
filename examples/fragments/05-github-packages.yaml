@@ -1,30 +1,28 @@
-# FRAGMENT: Load the RFLink Home Assistant packages directly from GitHub.
-# This is an alternative to local !include package loading.
-#
-# For a stable installation, use a released version tag instead of `main`.
-# The weather mapping below is optional and uses placeholder NAME/ID values.
+# FRAGMENT v0.2.1.2: GitHub component source + optional data diagnostics.
+# Merge with existing blocks. Do not load old api/all-data/gestures packages.
+# After uploading changed files, use refresh: 0s once to fetch the new sources.
+external_components:
+  - source: github://vicktor1979/esphome-rflink@main
+    components: [rflink, remote_receiver, rflink_remote, rflink_sensor]
+    refresh: 5min
 
 packages:
   rflink_native:
     url: https://github.com/vicktor1979/esphome-rflink
-    ref: v0.2.0.1
+    ref: main
     refresh: 5min
     files:
-      - packages/rflink-ha-api.yaml
+      - packages/rflink-ha-data-only.yaml
 
-      - path: packages/rflink-ha-weather.yaml
-        vars:
-          sensor_prefix: outdoor_weather
-          sensor_name: "Udvari érzékelő"
-          rf_protocol: "Cresta"
-          rf_device_id: "REPLACE_WITH_ACTUAL_ID"
-          stale_after: 60min
+rflink:
+  # KEEP your existing id: rf_bridge, receiver_id, plugin options, auto_start.
+  on_message:
+    then:
+      - script.execute:
+          id: rflink_api_process
+          message: !lambda return x;
 
-# The rflink.on_message block must call both scripts:
-#
-#   rflink_api_process
-#   outdoor_weather_process
-#
-# See:
-#   examples/fragments/existing-device-api-only.yaml
-#   examples/fragments/optional-weather-device.yaml
+# Device sensors: examples/rflink-sensors.yaml or
+# examples/fragments/03-optional-weather-device.yaml.
+# They subscribe directly; do not add any per-device script calls.
+# Remotes: event platform rflink_remote; see new-ev1527-remote.yaml.

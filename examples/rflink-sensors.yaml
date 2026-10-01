@@ -1,6 +1,7 @@
-# Fragment: merge this sensor list into your existing ESPHome YAML.
-# Requires v0.2.1.1; add rflink_sensor to external_components.components.
-# Enable the matching RFLink plugin (Mebus: 040; Alecto V1: 030).
+# Fragment: merge into the existing sensor list. Requires v0.2.1.2.
+# external_components.components must include rflink_sensor.
+# Replace example RF IDs with the complete IDs emitted by your own devices.
+# Enable plugins: Mebus 040, Alecto V1 030. No per-device script/package needed.
 sensor:
   - platform: rflink_sensor
     id: mebus_temp
@@ -18,11 +19,12 @@ sensor:
     rf_id: "006c"
     field: TEMP
 
-  # Optional: only an actual HUM field can update this entity.
   - platform: rflink_sensor
-    id: alecto_006c_humidity
-    name: "Alecto 006C páratartalom"
+    id: alecto_006c_battery
+    name: "Alecto 006C elemállapot"
     rflink_id: rf_bridge
     protocol: "Alecto V1"
     rf_id: "006c"
-    field: HUM
+    field: BAT
+    # LOW=0, OK=100. Two-state status, NOT measured battery charge.
+    # No BAT field means no update. The current Mebus plugin has no BAT output.

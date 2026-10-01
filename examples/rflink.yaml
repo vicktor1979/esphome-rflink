@@ -1,5 +1,5 @@
 # RFLink ESPHome – stable basic configuration example.
-# Configuration: v0.2.1.1; ESPHome >= 2026.9.0.
+# Configuration: v0.2.1.2; ESPHome >= 2026.9.0.
 # Sources track main so a manual GitHub upload needs no release tag.
 #
 # ESP8266 / NodeMCU v2 example using rxgate2.
@@ -41,9 +41,9 @@ wifi:
   password: !secret wifi_password
 
 logger:
-  level: INFO
-  # Only the decoded RFLink message tag is allowed at DEBUG; the HA switch
-  # decides whether those lines are actually emitted.
+  level: DEBUG  # Compile DEBUG support for the optional RFLink log switch.
+  initial_level: INFO  # Keep normal runtime logging quiet.
+  # The RFLink tag may log at DEBUG; the HA switch controls message emission.
   logs:
     rflink: DEBUG
 
@@ -61,10 +61,10 @@ ota:
 
 remote_receiver:
   id: rf_receiver
-  # Optional RFLink-style polling comparison: see UPDATE_v0.2.0.9_HU.md.
-  capture_mode: interrupt
+  # Working NodeMCU/SRX882 capture mode; see UPDATE_v0.2.0.9_HU.md.
+  capture_mode: rflink_polling
   capture_enabled: false  # stored BEFORE setup: no RX interrupt while connecting
-  high_frequency: false  # CUSTOM rxgate2 option; IRQ capture stays active after API connects
+  high_frequency: false  # Polling requests its own fast loop when capture is enabled
   pin:
     number: GPIO5
     inverted: false
@@ -92,7 +92,7 @@ rflink:
   # and defaults to OFF.
   # Runtime plugin switches. Listed plugins restore their last state;
   # Plugin 254 is the only exception and always starts OFF.
-  plugin_switches: [30, 61, 254]
+  plugin_switches: [30, 40, 61, 254]
 
   # Fast production default. Turn on the HA switch below only while debugging.
   log_messages: false
@@ -174,3 +174,39 @@ rflink_remote:
 #   examples/fragments/new-ev1527-remote.yaml
 #   examples/fragments/ev1527-light-control.yaml
 #   examples/fragments/generic-message-protocol.yaml
+
+
+# Fragment: merge into the existing sensor list. Requires v0.2.1.2.
+# external_components.components must include rflink_sensor.
+# Replace example RF IDs with the complete IDs emitted by your own devices.
+# Enable plugins: Mebus 040, Alecto V1 030. No per-device script/package needed.
+sensor:
+  - platform: rflink_sensor
+    id: mebus_temp
+    name: "Mebus hőmérséklet"
+    rflink_id: rf_bridge
+    protocol: "Mebus"
+    rf_id: "e501"
+    field: TEMP
+
+  - platform: rflink_sensor
+    id: alecto_006c_temp
+    name: "Alecto 006C hőmérséklet"
+    rflink_id: rf_bridge
+    protocol: "Alecto V1"
+    rf_id: "006c"
+    field: TEMP
+
+  - platform: rflink_sensor
+    id: alecto_006c_battery
+    name: "Alecto 006C elemállapot"
+    rflink_id: rf_bridge
+    protocol: "Alecto V1"
+    rf_id: "006c"
+    field: BAT
+    # LOW=0, OK=100. Two-state status, NOT measured battery charge.
+    # No BAT field means no update. The current Mebus plugin has no BAT output.
+
+  # Diagnostics only: 5-minute refresh, independent of RF/device sensor updates.
+  - id: !extend rflink_api_packet_age
+    update_interval: 5min

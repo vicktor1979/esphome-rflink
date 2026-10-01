@@ -4,6 +4,15 @@ Az RFLink ESPHome komponens fontosabb verziói és változásai.
 
 Verziózás: négy, egy számjegyes blokk (0–9). Példa: v0.2.0.9 → v0.2.1.0 → v0.2.1.1.
 
+## v0.2.1.2 — elemállapot és példák
+
+- Új `field: BAT` a rflink_sensor platformon: LOW=0, OK=100; kétállapotú indikátor, nem mért töltöttség. Hiányzó és ismeretlen érték nem változtatja meg az állapotot.
+- Automatikus battery/diagnostic metaadatok. A Mebus pluginhoz nem találunk ki BAT adatot.
+- A teljes és eszközszenzor-példák átálltak rflink_sensor használatára; a régi weather script-hívások kikerültek a példákból.
+- A fő példák polling módot, Mebus pluginkapcsolót és 5 perces csomagkor-frissítést tartalmaznak; a logger szintjei is érvényesek ESPHome 2026.9.0 alatt.
+- Host C++ és valódi ESPHome-kódgenerálási tesztek. A rádiós és EV-források változatlanok.
+- Telepítés: `UPDATE_v0.2.1.2_HU.md`.
+
 ## v0.2.1.1 — szenzor state_class fordítási javítás
 
 - Az automatikus `measurement` érték a szenzorséma után lett beszúrva, ezért szövegként került a generált C++-ba. A javítás az ESPHome saját `validate_state_class` konverzióját használja; így valódi StateClass enum keletkezik.

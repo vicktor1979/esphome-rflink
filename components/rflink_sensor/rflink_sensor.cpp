@@ -1,4 +1,5 @@
 #include "rflink_sensor.h"
+#include <cstring>
 #include "esphome/components/json/json_util.h"
 #include "esphome/core/log.h"
 
@@ -20,7 +21,7 @@ void RFLinkSensor::setup() {
 void RFLinkSensor::dump_config() {
   LOG_SENSOR("", "RFLink sensor", this);
   ESP_LOGCONFIG(TAG, "  Protocol: %s; RF ID: %s; field: %s", this->protocol_.c_str(),
-                this->rf_id_.c_str(), rflink_data::FIELDS[this->field_].key);
+                this->rf_id_.c_str(), this->battery_field_ ? "BAT (LOW=0, OK=100)" : rflink_data::FIELDS[this->field_].key);
 }
 void RFLinkSensor::on_message_(const std::string &message) {
   // Bridge JSON has literal field keys. EV button messages lack TEMP/HUM etc.,
@@ -30,6 +31,14 @@ void RFLinkSensor::on_message_(const std::string &message) {
     const char *protocol = root["NAME"] | "";
     const char *rf_id = root["ID"] | "";
     if (this->protocol_ != protocol || !id_matches(this->rf_id_, rf_id)) return true;
+    if (this->battery_field_) {
+      // The original formatter emits only LOW / OK, not a percentage or
+      // NORMAL/HIGH. Never convert absent/unknown states into a healthy battery.
+      const char *battery = root["BAT"] | "";
+      if (std::strcmp(battery, "LOW") == 0) this->publish_state(0.0f);
+      else if (std::strcmp(battery, "OK") == 0) this->publish_state(100.0f);
+      return true;
+    }
     const auto value = rflink_data::number(root, this->field_);
     // Missing/invalid fields retain the last reading. No inferred values,
     // learning gate or cooldown. Standard ESPHome filters remain available.

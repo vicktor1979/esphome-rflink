@@ -1,24 +1,34 @@
-# FRAGMENT: merge into YOUR EXISTING device YAML. Not a complete device file.
-# First upload packages/rflink-ha-api.yaml to your existing GitHub repository.
-# Replace YOUR_GITHUB_USER and the repository/branch if yours are different.
-packages:
-  rflink_api: github://YOUR_GITHUB_USER/esphome-rflink/packages/rflink-ha-api.yaml@v0.2.0.1
+# FRAGMENT v0.2.1.2: merge into YOUR EXISTING device YAML.
+# Keep your receiver pin, capture mode, OTA and Wi-Fi settings.
+# Remove old api/all-data/gestures packages when migrating to data-only.
+external_components:
+  - source: github://vicktor1979/esphome-rflink@main
+    components: [rflink, remote_receiver, rflink_remote, rflink_sensor]
+    refresh: 5min
 
-# Keep your existing api settings/key. Add this block only when missing.
+packages:
+  rflink_api:
+    url: https://github.com/vicktor1979/esphome-rflink
+    ref: main
+    refresh: 5min
+    files:
+      - packages/rflink-ha-data-only.yaml
+
+# Keep existing API settings/key; merge, do not duplicate.
 api:
   encryption:
     key: !secret rflink_api_key
   reboot_timeout: 0s
 
 rflink:
-  # KEEP your existing id, receiver_id, rx_plugins and log_messages here.
-  # Replace only the old on_message block with this one.
+  # KEEP existing id: rf_bridge, receiver_id, rx_plugins and other options.
   on_message:
     then:
       - script.execute:
           id: rflink_api_process
           message: !lambda return x;
 
-# API-only mode: remove the old mqtt: block and mqtt.publish actions.
-# Keep remote_receiver, GPIO power/enable, OTA, Wi-Fi and external_components
-# exactly as they are in the working configuration. No raw dump/on_raw logger.
+# The above script is shared diagnostics only.
+# Sensor data needs no on_message script: use sensor platform rflink_sensor.
+# Button actions use event platform rflink_remote with your rf_remotes hub.
+# API-only mode: remove old mqtt: block and mqtt.publish actions.

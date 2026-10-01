@@ -1,31 +1,41 @@
-# FRAGMENT: OPTIONAL per-device weather sensor.
-# Do not use the placeholder RF ID as-is.
-# Replace protocol and RF ID with the actual values from RF utolsó üzenet.
-# This demonstrates a Cresta-style configuration example.
-# It is NOT an identified real user device.
-packages:
-  rflink_api: !include packages/rflink-ha-api.yaml
-  outdoor_weather: !include
-    file: packages/rflink-ha-weather.yaml
-    vars:
-      sensor_prefix: outdoor_weather
-      sensor_name: "Udvari érzékelő"
-      rf_protocol: "Cresta"
-      rf_device_id: "REPLACE_WITH_ACTUAL_ID"
-      stale_after: 60min
+# FRAGMENT v0.2.1.2: exact-device sensors through the native RFLink platform.
+# Add rflink_sensor to your existing external_components.components list.
+# Replace the example protocol and RF ID; enable the corresponding plugin.
+# No weather package or per-device script.execute call is required.
+# This Cresta example is not an identified real user device.
+sensor:
+  - platform: rflink_sensor
+    id: outdoor_weather_temperature
+    name: "Udvari érzékelő hőmérséklet"
+    rflink_id: rf_bridge
+    protocol: "Cresta"
+    rf_id: "REPLACE_WITH_ACTUAL_ID"
+    field: TEMP
+    filters:
+      - timeout: 60min
 
-rflink:
-  # KEEP your existing id, receiver_id, rx_plugins, etc.
-  on_message:
-    then:
-      - script.execute:
-          id: rflink_api_process
-          message: !lambda return x;
-      - script.execute:
-          id: outdoor_weather_process
-          message: !lambda return x;
+  - platform: rflink_sensor
+    id: outdoor_weather_humidity
+    name: "Udvari érzékelő páratartalom"
+    rflink_id: rf_bridge
+    protocol: "Cresta"
+    rf_id: "REPLACE_WITH_ACTUAL_ID"
+    field: HUM
+    filters:
+      - timeout: 60min
 
-# Repeat the weather include with a different sensor_prefix and RF ID for
-# another device, and add a call to its own <sensor_prefix>_process script.
-# Missing TEMP/HUM/BAT fields are not invented. A Mebus device that sends only
-# TEMP will leave humidity/battery entities unknown.
+  - platform: rflink_sensor
+    id: outdoor_weather_battery
+    name: "Udvari érzékelő elemállapot"
+    rflink_id: rf_bridge
+    protocol: "Cresta"
+    rf_id: "REPLACE_WITH_ACTUAL_ID"
+    field: BAT
+    filters:
+      - timeout: 60min
+    # LOW=0; OK=100. An indicator, not a measured percentage.
+
+# timeout is optional: after 60 min without a valid matching field, that sensor
+# becomes unknown. Omit filters to retain the last value until reboot.
+# Missing TEMP/HUM/BAT is never invented. Mebus currently sends only TEMP.
+# Keep the existing rflink_api_process call if using data-only diagnostics.

@@ -9,7 +9,7 @@ AUTO_LOAD = ["json"]
 ns = cg.esphome_ns.namespace("rflink_sensor")
 RFLinkSensor = ns.class_("RFLinkSensor", sensor.Sensor, cg.Component)
 fields_ns = cg.esphome_ns.namespace("rflink_data")
-FIELDS = "SET_LEVEL TEMP HUM BARO HSTATUS BFORECAST UV LUX RAIN RAINRATE WINSP AWINSP WINGS WINDIR WINCHL WINTMP CHIME CO2 SOUND KWATT WATT CURRENT DIST METER VOLT CHAN WINDIR_DEG".split()
+FIELDS = "SET_LEVEL TEMP HUM BARO HSTATUS BFORECAST UV LUX RAIN RAINRATE WINSP AWINSP WINGS WINDIR WINCHL WINTMP CHIME CO2 SOUND KWATT WATT CURRENT DIST METER VOLT CHAN WINDIR_DEG BAT".split()
 
 
 def match_text(value):
@@ -26,6 +26,8 @@ def defaults(config):
         "WINTMP": ("°C", "temperature", 1),
         "HUM": ("%", "humidity", 0),
         "BARO": ("hPa", "atmospheric_pressure", 0),
+        # Two-state indicator, NOT a measured state of charge: LOW=0, OK=100.
+        "BAT": ("%", "battery", 0),
     }
     if config["field"] in metadata:
         unit, device_class, decimals = metadata[config["field"]]
@@ -35,6 +37,8 @@ def defaults(config):
         # This hook runs AFTER sensor_schema: defaults added here must already
         # be validated, otherwise codegen emits a C++ string instead of an enum.
         config.setdefault("state_class", sensor.validate_state_class("measurement"))
+    if config["field"] == "BAT":
+        config.setdefault("entity_category", cv.entity_category("diagnostic"))
     return config
 
 
@@ -52,4 +56,7 @@ async def to_code(config):
     parent = await cg.get_variable(config["rflink_id"])
     cg.add(var.set_parent(parent))
     cg.add(var.set_match(config["protocol"], config["rf_id"]))
-    cg.add(var.set_field(getattr(fields_ns, config["field"])))
+    if config["field"] == "BAT":
+        cg.add(var.set_battery_field())
+    else:
+        cg.add(var.set_field(getattr(fields_ns, config["field"])))
