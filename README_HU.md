@@ -1,35 +1,35 @@
-# RFLink ESPHome v0.2.0.1 – rövid magyar útmutató
+# RFLink ESPHome v0.2.1.3 – rövid magyar útmutató
 
 A részletes, aktuális dokumentáció a gyökérben lévő [`README.md`](README.md). Ez a fájl a napi használathoz szükséges rövid összefoglaló.
 
 ## Stabil verzió használata
 
-A `main` fejlesztési ág. Működő eszközön rögzített taget használj:
+Az alábbi példa a main ágról tölti be a kézzel feltöltött javításokat. Rögzített verzióhoz csak olyan taget használj, amelyet ténylegesen létrehoztál a repóban:
 
 ```yaml
 packages:
   rflink_api:
     url: https://github.com/vicktor1979/esphome-rflink
-    ref: v0.2.0.1
+    ref: main
     refresh: 5min
     files:
       - packages/rflink-ha-data-only.yaml
 
 external_components:
-  - source: github://vicktor1979/esphome-rflink@v0.2.0.1
-    components: [rflink, remote_receiver, rflink_remote]
+  - source: github://vicktor1979/esphome-rflink@main
+    components: [rflink, remote_receiver, rflink_remote, rflink_sensor]
     refresh: 5min
 ```
 
 Teljes ESP8266 példák:
 
 - `examples/rflink.yaml` – legacy/original profil;
-- `examples/rflink-extended.yaml` – 55 pluginos extended profil;
+- `examples/rflink-extended.yaml` – extended profil, konkrét kiválasztott pluginlistával;
 - `examples/fragments/` – távirányító, MQTT, időjárás és GitHub package részletek.
 
-## v0.2.0.1 fontos változásai
+## v0.2.1.3 fontos változásai
 
-- A pluginlista egyszerű: `plugin_switches: [30, 61, 254]`. Nincs külön `plugin_id:`, kapcsoló `id:` vagy plugin-restore blokk.
+- Egyetlen lista: `rx_plugins: [30, 40, 61, 254]`. Ez vezérli a fordítást és az automatikus kapcsolókat. A régi plugin_switches kulcsot töröld.
 - A normál felsorolt pluginok visszaállítják az előző kapcsolóállapotukat és első használatkor ON-ról indulnak; a 254 mindig OFF-ról indul.
 - Nincs több plugin-alaphelyzet gomb; az `RFLink aktív pluginok` text sensor megmarad, és minden plugin ki-/bekapcsolásakor frissül.
 - A diagnosztikai mezők build/setup során automatikusan a konfigurált pluginok képességeihez igazodnak. Amit egyik konfigurált plugin sem tud előállítani, az nem jelenik meg Home Assistantban.
@@ -51,6 +51,7 @@ Teljes ESP8266 példák:
 ```yaml
 remote_receiver:
   id: rf_receiver
+  capture_mode: rflink_polling
   capture_enabled: false
   high_frequency: false
   pin:
@@ -66,14 +67,15 @@ A vétel csak Wi-Fi + Home Assistant API állapotfeliratkozás után, 5 másodpe
 
 ## Pluginok
 
-`plugin_switches` használatakor csak az ott felsorolt pluginok kapnak runtime kapcsolót. A formátum egyszerű lista, például:
+Az rx_plugins minden kiválasztott pluginjához automatikusan kapcsoló készül, kivéve a kötelező 001-et. Példa:
 
 ```yaml
 rflink:
-  plugin_switches: [30, 61, 254]
+  plugin_profile: legacy
+  rx_plugins: [30, 40, 61, 254]
 ```
 
-Plugin 001 mindig aktív és nem kell felsorolni. A normál pluginok az utolsó kapcsolóállapotot visszaállítják (`RESTORE_DEFAULT_ON`), a 254 viszont minden reboot/OTA után OFF-ról indul.
+Az `all` az egész profilt lefordítja és minden pluginhoz kapcsolót készít (legacy: 47, extended: 54). A `configured` az alapértelmezés, és az eredeti upstream konfigurációs fejléc választását követi; ehhez is automatikusan kapcsolók készülnek. Plugin 001 mindig aktív és nem kell felsorolni. A normál pluginok az utolsó kapcsolóállapotot visszaállítják (`RESTORE_DEFAULT_ON`), a 254 viszont minden reboot/OTA után OFF-ról indul.
 
 A diagnosztikai mezők automatikusan a felsorolt pluginok képességeihez igazodnak. A statikusan nem támogatott mezők nem kerülnek ki HA felé; egy plugin futásidejű kikapcsolásakor a csak hozzá tartozó állapotok unavailable / `Kikapcsolva` állapotúak.
 
@@ -96,7 +98,7 @@ A v0.1.9 két önjavító védelmet tartalmaz: overflow vagy 2,5 s-nál tovább 
 
 ## Alecto V1
 
-Az Alecto V1/Plugin 030 vételnél a bridge több sérült ismétlésből checksum-valid sort tud helyreállítani, miközben az eredeti `Plugin_030.c` változatlan. A tesztelt készülék hőmérsékletet és elemállapotot küld, páratartalmat nem; az RF rolling ID külön diagnosztikai entitásban látható.
+Az Alecto V1/Plugin 030 az eredeti feldolgozást használja, egyedi helyreállítás és többmintás értékszűrés nélkül. A rflink_sensor platform TEMP és BAT mezőket kezel; BAT: LOW=0, OK=100, kétállapotú jelzés. A Mebus plugin csak hőmérsékletet ad. Példák: examples/rflink-sensors.yaml.
 
 ## Visszalépés
 

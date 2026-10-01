@@ -2,21 +2,21 @@
 
 **RF-jelek vétele változatlan RFLink-pluginokkal, natív Home Assistant-entitások, YAML-ban megadott távirányítók, gesztusfelismerés és tanuló nézet.**
 
-Dokumentáció: **2026. szeptember 26.**  
-Jelenlegi stabil fejlesztési alap: **v0.2.0.1 · ESP8266 rxgate2 · egyszerű runtime plugin gate · capability-aware diagnosztika · rflink_remote**.
+Dokumentáció: **2026. október 1.**  
+Aktuális konfiguráció: **v0.2.1.3 · egyetlen rx_plugins lista · automatikus kapcsolók · rflink_sensor TEMP/HUM/BAT · rflink_remote**. A v0.2.1.3 készülékes ellenőrzése még szükséges.
 
-Ez a README a projekt jelenlegi, közösen kipróbált felépítését foglalja össze. **Nem új firmware-verzió és nem teljes forráscsomag:** a mellékelt konfigurációs példák a GitHub-repóban már meglévő komponenseket használják. A dokumentációfrissítés nem módosítja a rádiós dekódereket, a vételi időzítéseket vagy a gesztusfelismerő C++ kódot.
+Ez a README a projekt aktuális konfigurációját foglalja össze. A v0.2.1.3 átállási útmutatója: [`UPDATE_v0.2.1.3_HU.md`](UPDATE_v0.2.1.3_HU.md). Ebben a verzióban a pluginválasztás és a kapcsolók létrehozása változott.
 
 A **v0.1.9** fő célja a gyorsabb és önjavító vételi út: csak az aktív dekódereket járja be, az extended előfeldolgozás csak akkor fut, ha kell, a single-click pedig nem vár fölöslegesen multi-click időablakra. A korábbi YAML-os 1 s/10 s régi indítási és diagnosztikai `interval` logika a komponensbe került (`auto_start: true`). A vevő overflow vagy tartósan lezáratlan impulzussor után saját maga újraszinkronizál, a legacy ismétlésszűrő állapot pedig hosszabb RF-csend után automatikusan ürül. A Home Assistantban megjelenő tanuló/utolsó RF szövegek rövidek; a teljes JSON hibakereséshez továbbra is a naplóban elérhető. A fő példákban a részletes RF üzenetnapló alapból ki van kapcsolva a kisebb futásidejű terhelésért; szükség esetén a **RFLink részletes napló** kapcsolóval ideiglenesen bekapcsolható.
 
 
-### v0.2.0.1 plugin- és diagnosztika-egyszerűsítés
+### v0.2.1.3: egyetlen pluginlista
 
-A runtime plugin konfiguráció kézi plugin-ID/ESPHome-ID blokk helyett egyszerű lista:
+A fordítás és a kapcsolók közös forrása az rx_plugins. A régi plugin_switches kulcsot törölni kell:
 
 ```yaml
 rflink:
-  plugin_switches: [30, 61, 254]
+  rx_plugins: [30, 40, 61, 254]
 ```
 
 A normál felsorolt pluginok `RESTORE_DEFAULT_ON` módban működnek; a 254 debug plugin mindig OFF-ról indul. Nincs külön plugin-alaphelyzet gomb. Az `RFLink aktív pluginok` text sensor megmarad, és minden runtime ki-/bekapcsoláskor azonnal frissül (pl. `001,030,061`). A build az eredeti pluginforrások `display_*` hívásaiból képességtáblát készít, és setup alatt elrejti azokat a diagnosztikai mezőket, amelyeket egyik konfigurált plugin sem tud előállítani. Futás közbeni OFF állapotnál az érintett entitás unavailable / `Kikapcsolva` lesz; a natív API entitáslistájának biztonságos runtime eltávolítását/újrafelvételét nem erőlteti.
@@ -287,11 +287,13 @@ A szünet alatt érkező jelek nem kerülnek későbbi visszajátszásra. API-fe
 rflink:
   id: rf_bridge
   receiver_id: rf_receiver
-  rx_plugins: all
-  plugin_switches: [30, 61, 254]
+  plugin_profile: legacy
+  rx_plugins: [30, 40, 61, 254]
 ```
 
-A `plugin_switches` listában csak a plugin számát kell megadni. Plugin 001 kötelező előfeldolgozó és automatikusan aktív; ne sorold fel. A normál kapcsolók utolsó állapotukat visszaállítják, a 254 mindig OFF-ról indul.
+Az `rx_plugins` választja ki a lefordítandó pluginokat, és mindegyikhez automatikusan kapcsoló készül (a 001 kivételével). A régi `plugin_switches` kulcsot töröld. Plugin 001 kötelező előfeldolgozó és automatikusan aktív; ne sorold fel. A normál kapcsolók utolsó állapotukat visszaállítják, a 254 mindig OFF-ról indul.
+
+Az `rx_plugins: all` legacy esetén 47, extended esetén 54 kapcsolót jelent. A normál új kapcsolók első induláskor ON állapotúak, így all esetén az összes normál dekóder aktív lehet; az ismert eszközökhöz használj konkrét listát. A `configured` továbbra is az eredeti `_Plugin_Config_01.h` listáját jelenti, nem a megszűnt plugin_switches mezőt. A plugin_profile kiválasztja a forráskészletet, és megmarad.
 
 | Választás | Eredmény az eredeti feltöltött készletből |
 |---|---|

@@ -3,7 +3,9 @@
 # Battery is now numeric; update any old binary_sensor automation references.
 # FRAGMENT v0.2.1.2: exact-device sensors through the native RFLink platform.
 # Add rflink_sensor to your existing external_components.components list.
-# Replace the example protocol and RF ID; enable the corresponding plugin.
+# Replace the example protocol and RF ID; add its plugin to rflink.rx_plugins.
+# Cresta requires 34, e.g. rx_plugins: [30, 34, 40, 61, 254].
+# The matching switch is generated automatically and must be ON for reception.
 # No weather package or per-device script.execute call is required.
 # This Cresta example is not an identified real user device.
 sensor:

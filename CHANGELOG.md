@@ -4,6 +4,15 @@ Az RFLink ESPHome komponens fontosabb verziói és változásai.
 
 Verziózás: négy, egy számjegyes blokk (0–9). Példa: v0.2.0.9 → v0.2.1.0 → v0.2.1.1.
 
+## v0.2.1.3 — egyetlen RX-pluginlista
+
+- Az `rx_plugins` választja ki a lefordítandó pluginokat és automatikusan létrehozza a kapcsolóikat. A külön `plugin_switches` beállítás megszűnt; használatára egyértelmű átállási hibaüzenet jelenik meg.
+- Plugin 001 mindig része a buildnek, aktív és kapcsoló nélküli. A normál kapcsolók az utolsó állapotot állítják vissza, első alkalommal ON-ról indulnak; a 254 minden újraindításkor OFF.
+- Az `all` minden elérhető pluginhoz kapcsolót ad (legacy: 47, extended: 54). A `configured` jelentése és alapértelmezése változatlan: az upstream konfigurációs fejléc listája. A `plugin_profile` megmarad.
+- A teljes példák konkrét listát használnak. A Cresta-példák jelzik, hogy a 034-es plugint is fel kell venni. A kapcsolók neve és a vételi/dekóder/gesztus C++ logika változatlan.
+- Valódi ESPHome 2026.9.0 validálási és kódgenerálási regressziók: explicit/all/configured/default/001-only/254-only, restore módok, hiányzó plugin és régi kulcs elutasítása; teljes és összevont YAML-példák.
+- Telepítés: `UPDATE_v0.2.1.3_HU.md`.
+
 ## v0.2.1.2 — elemállapot és példák
 
 - Új `field: BAT` a rflink_sensor platformon: LOW=0, OK=100; kétállapotú indikátor, nem mért töltöttség. Hiányzó és ismeretlen érték nem változtatja meg az állapotot.

@@ -1,5 +1,5 @@
 # RFLink ESPHome – stable basic configuration example.
-# Configuration: v0.2.1.2; ESPHome >= 2026.9.0.
+# Configuration: v0.2.1.3; ESPHome >= 2026.9.0.
 # Sources track main so a manual GitHub upload needs no release tag.
 #
 # ESP8266 / NodeMCU v2 example using rxgate2.
@@ -78,21 +78,18 @@ rflink:
   id: rf_bridge
   receiver_id: rf_receiver
 
-  rx_plugins: all
+  # One list selects both compiled decoders and their HA switches.
+  rx_plugins: [30, 40, 61, 254]
   plugin_profile: legacy
 
   # Built-in Wi-Fi + HA API gate, 5 s settle, monitoring/build/health entities.
   # Replaces the old YAML globals + 1 s/10 s interval lambdas.
   auto_start: true
 
-  # All legacy decoders are compiled, but only the listed plugins
-  # can be enabled at runtime.
-  # Plugin 001 is always enabled.
-  # Plugin 254 is the unsupported-signal diagnostic fallback
-  # and defaults to OFF.
-  # Runtime plugin switches. Listed plugins restore their last state;
-  # Plugin 254 is the only exception and always starts OFF.
-  plugin_switches: [30, 40, 61, 254]
+  # Switches are generated from rx_plugins automatically.
+  # Plugin 001 is always active, without a switch.
+  # Ordinary switches restore their last state (first boot: ON).
+  # Plugin 254 always starts OFF and is for temporary diagnostics only.
 
   # Fast production default. Turn on the HA switch below only while debugging.
   log_messages: false
@@ -176,7 +173,7 @@ rflink_remote:
 #   examples/fragments/generic-message-protocol.yaml
 
 
-# Fragment: merge into the existing sensor list. Requires v0.2.1.2.
+# Fragment: merge into the existing sensor list. Requires v0.2.1.3.
 # external_components.components must include rflink_sensor.
 # Replace example RF IDs with the complete IDs emitted by your own devices.
 # Enable plugins: Mebus 040, Alecto V1 030. No per-device script/package needed.

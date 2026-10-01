@@ -23,9 +23,9 @@ namespace rflink {
 static const char *const TAG = "rflink";
 
 void RFLinkComponent::setup() {
-  // With plugin_switches configured, only the mandatory preprocessor (001)
+  // In managed mode, only the mandatory preprocessor (001)
   // starts enabled. Individual switch components then restore/choose the
-  // runtime states. Without plugin_switches, keep the pre-v0.1.8 behaviour:
+  // runtime states. Unmanaged C++ use keeps the pre-v0.1.8 behaviour:
   // all ordinary compiled decoders start enabled (254 debug stays OFF).
   ::rflink_legacy::reset(!this->plugin_switch_mode_);
   // Typical RFLink packets are well below this size. Reserve once so the hot
@@ -42,7 +42,7 @@ void RFLinkComponent::setup() {
     this->ready_timing_ = false;
     this->auto_running_ = false;
     if (this->build_text_sensor_ != nullptr) {
-      std::string build{"v0.2.1.2 · "};
+      std::string build{"v0.2.1.3 · "};
       build += ::rflink_legacy::plugin_profile();
       build += " · ";
       build += std::to_string(static_cast<unsigned>(::rflink_legacy::plugin_count()));
@@ -104,7 +104,7 @@ void RFLinkComponent::loop() {
 }
 
 void RFLinkComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.2.1.2 (original Plugin 030; no Alecto recovery or value gate):");
+  ESP_LOGCONFIG(TAG, "RFLink RX compatibility bridge v0.2.1.3 (original Plugin 030; no Alecto recovery or value gate):");
   ESP_LOGCONFIG(TAG, "  Plugin profile: %s", rflink_legacy::plugin_profile());
   ESP_LOGCONFIG(TAG, "  RX plugins compiled: %u", static_cast<unsigned>(::rflink_legacy::plugin_count()));
   ESP_LOGCONFIG(TAG, "  RX plugins enabled: %u", static_cast<unsigned>(::rflink_legacy::enabled_plugin_count()));
